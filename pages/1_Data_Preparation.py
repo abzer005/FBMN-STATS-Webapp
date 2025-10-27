@@ -46,6 +46,13 @@ else:
         st.warning("💡 This tool only supports FBMN task ID from GNPS1 and 2 not from Quickstart GNPS1.")
         
         if file_origin == "Example dataset from publication":
+            if st.session_state.get("ft_with_annotations") is not None:
+                st.session_state["ft_with_annotations"] = None
+            if st.session_state.get("nw") is not None:
+                st.session_state["nw"] = None
+            if st.session_state.get("an") is not None:
+                st.session_state["an"] = None
+            
             task_id_default = "b661d12ba88745639664988329c1363e" # 63e8b3da08df41fe95031e4710e0476b
             disabled = True
             task_id = st.text_input("GNPS FBMN task ID", task_id_default, disabled=disabled, help="This is a GNPS1 FBMN task ID used in the publication.")
@@ -63,6 +70,10 @@ else:
         elif file_origin == "GNPS2 classical molecular networking (CMN) task ID":
             if st.session_state.get("ft_with_annotations") is not None:
                 st.session_state["ft_with_annotations"] = None
+            if st.session_state.get("nw") is not None:
+                st.session_state["nw"] = None
+            if st.session_state.get("an") is not None:
+                st.session_state["an"] = None
 
             task_id_default = "" # 2a65f90094654235a4c8d337fdca11e1
             disabled = False
@@ -147,11 +158,19 @@ else:
         st.session_state["md"] = st.session_state["md_gnps"]
         st.session_state["an"] = st.session_state["an_gnps"]
         st.session_state["nw"] = st.session_state["nw_gnps"]
+
+        # Display all files in a table, including the index column for the Feature Annotation Table
+        show_all_files_in_table("ft", "md", "an", "nw", "ft_with_annotations")
+
         st.session_state["ft_with_annotations"] = st.session_state.get("ft_with_annotations", pd.DataFrame())
         
     if file_origin == "Quantification table and meta data files":
         if st.session_state.get("ft_with_annotations") is not None:
             st.session_state["ft_with_annotations"] = None
+        if st.session_state.get("nw") is not None:
+            st.session_state["nw"] = None
+        if st.session_state.get("an") is not None:
+            st.session_state["an"] = None
         
         st.info("💡 Upload tables in txt (tab separated), tsv, csv or xlsx (Excel) format.")
         c1, c2 = st.columns(2)
@@ -191,6 +210,8 @@ else:
                                    key="nw_uploader",
                                    )
 
+        #ft_with_annotations = st.session_state.get("ft_with_annotations", pd.DataFrame())
+
         # --- Load into session_state only when a new file arrives ---
         if ft_file:
             st.session_state["ft_uploaded"] = load_ft(ft_file).set_index('metabolite')
@@ -215,7 +236,12 @@ else:
         # --- Retrieve from session_state ---
         if st.session_state["ft_uploaded"] is not None or st.session_state["md_uploaded"] is not None:
             ft, md, an, nw = get_uploaded_tables()
-        
+
+            # Ensure the Feature Annotation Table has the same index as the Quantification Table
+            if st.session_state["ft"] is not None and not st.session_state["ft"].empty and st.session_state["an"] is not None:
+                if not st.session_state["an"].empty:
+                    st.session_state["an"] = st.session_state["an"].set_index(st.session_state["ft"].index())
+
         st.session_state["ft"] = ft
         st.session_state["md"] = md
         st.session_state["an"] = an
@@ -246,6 +272,21 @@ else:
     if ft is not None and not ft.empty and md is not None and not md.empty:
         st.success("Files loaded successfully!")
 
+    if 'ft_with_annotations' in st.session_state and st.session_state["ft_with_annotations"] is not None:
+        column_name = st.session_state.get("name_key", None)
+        st.session_state["name_column"] = st.session_state["ft_with_annotations"][column_name].str.replace(' ', '_').fillna("NA")
+        name_column = st.session_state["name_column"]  # Keep as a pd.Series
+
+        i = 0
+
+        for k in ft.index:
+            ft.at[k, "metabolite"] = f"{k}&{name_column.at[i]}"
+            i += 1
+        st.session_state["ft"] = ft.set_index('metabolite')
+        
+        # show_table(st.session_state["ft"])
+
+
     st.markdown("# Data Cleanup")
     
     with st.expander("📖 About"):
@@ -263,6 +304,7 @@ else:
     ):
 
         ft = st.session_state.get('ft').copy()
+
         md = st.session_state.get('md').copy()
 
         # clean up meta data table
@@ -273,6 +315,8 @@ else:
 
         # # check if ft column names and md row names are the same
         md, ft = check_columns(md, ft)
+
+        #ft["feature"] = ft[]
 
         # Initialize the process flags at the start of your Streamlit app if they don't already exist
         if 'blank_removal_done' not in st.session_state:
@@ -432,10 +476,4 @@ else:
             )
             st.session_state["data_preparation_done"] = True
             st.rerun()
-
-            # # Display all rows of the "metabolite" column
-            # if "metabolite" in st.session_state.data.columns:
-            #     st.dataframe(st.session_state.data["metabolite"])
-            # else:
-            #     st.warning("The 'metabolite' column is not present in the data.")
-
+    

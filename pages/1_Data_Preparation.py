@@ -34,7 +34,7 @@ else:
         st.session_state.setdefault(k, pd.DataFrame())
     
     # b661d12ba88745639664988329c1363e
-    if file_origin == "Small example dataset for testing":
+    if file_origin == "Small example dataset for testing":#DONE
         ft, md = load_example()
         ft = ft.set_index('metabolite')
         an, nw, ft_with_annotations = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()  
@@ -46,34 +46,36 @@ else:
         st.warning("💡 This tool only supports FBMN task ID from GNPS1 and 2 not from Quickstart GNPS1.")
         
         if file_origin == "Example dataset from publication":
-            if st.session_state.get("ft_with_annotations") is not None:
-                st.session_state["ft_with_annotations"] = None
-            if st.session_state.get("nw") is not None:
-                st.session_state["nw"] = None
-            if st.session_state.get("an") is not None:
-                st.session_state["an"] = None
-            
-            task_id_default = "b661d12ba88745639664988329c1363e" # 63e8b3da08df41fe95031e4710e0476b
+            if 'blank_removal_done' not in st.session_state and 'imputation_done' not in st.session_state and 'normalization_method_used' not in st.session_state:
+                reset_dataframes()
+
+            task_id_default ="b661d12ba88745639664988329c1363e"
             disabled = True
+
             task_id = st.text_input("GNPS FBMN task ID", task_id_default, disabled=disabled, help="This is a GNPS1 FBMN task ID used in the publication.")
             
+            if task_id:
+                st.session_state["task_id"] = task_id
+            else:
+                st.session_state["task_id"] = None
+            
+            
             _, c2, _ = st.columns(3)
-            if c2.button("Load files from GNPS", type="primary", disabled=len(task_id) == 0, use_container_width=True):
-                st.session_state["ft_gnps"], st.session_state["md_gnps"], st.session_state["an_gnps"], st.session_state["nw_gnps"] = load_from_gnps_fbmn(task_id)
-                st.session_state["ft_gnps"] = st.session_state["ft_gnps"]
-                
-                ft, md, an, nw, merged, name_key = get_gnps_tables()
-                st.session_state["ft_with_annotations"] = merged
-                st.session_state["name_key"] = name_key
-            show_all_files_in_table("ft_gnps", "md_gnps", "an_gnps", "nw_gnps", "ft_with_annotations")            
+            with c2:
+                st.button("Load files from GNPS", type="primary", disabled=True)
+
+            st.session_state["ft_gnps"], st.session_state["md_gnps"], st.session_state["an_gnps"], st.session_state["nw_gnps"] = load_from_gnps_fbmn(task_id)
+            st.session_state["ft_gnps"] = st.session_state["ft_gnps"]
+        
+            ft, md, an, nw, merged, name_key = get_gnps_tables()
+            st.session_state["ft_with_annotations"] = merged
+            st.session_state["name_key"] = name_key
+
+            show_all_files_in_table("ft_gnps", "md_gnps", "an_gnps", "nw_gnps", "ft_with_annotations")      
         
         elif file_origin == "GNPS2 classical molecular networking (CMN) task ID":
-            if st.session_state.get("ft_with_annotations") is not None:
-                st.session_state["ft_with_annotations"] = None
-            if st.session_state.get("nw") is not None:
-                st.session_state["nw"] = None
-            if st.session_state.get("an") is not None:
-                st.session_state["an"] = None
+            if 'blank_removal_done' not in st.session_state and 'imputation_done' not in st.session_state and 'normalization_method_used' not in st.session_state:
+                reset_dataframes()
 
             task_id_default = "" # 2a65f90094654235a4c8d337fdca11e1
             disabled = False
@@ -106,11 +108,14 @@ else:
                 st.session_state["md_gnps"] = None
                 st.session_state["an_gnps"] = None
                 st.session_state["nw_gnps"] = None
+                st.session_state["ft_with_annotations"] = None
 
             show_all_files_in_table("ft_gnps", "md_gnps", "an_gnps", "nw_gnps", "ft_with_annotations")
         
-
         elif file_origin == "GNPS(2) FBMN task ID":
+            if 'blank_removal_done' not in st.session_state and 'imputation_done' not in st.session_state and 'normalization_method_used' not in st.session_state:
+                reset_dataframes()
+
             task_id_default = ""
             disabled = False
 
@@ -151,6 +156,7 @@ else:
                 st.session_state["md_gnps"] = None
                 st.session_state["an_gnps"] = None
                 st.session_state["nw_gnps"] = None
+                st.session_state["ft_with_annotations"] = None
 
             show_all_files_in_table("ft_gnps", "md_gnps", "an_gnps", "nw_gnps", "ft_with_annotations")
         
@@ -160,17 +166,12 @@ else:
         st.session_state["nw"] = st.session_state["nw_gnps"]
 
         # Display all files in a table, including the index column for the Feature Annotation Table
-        show_all_files_in_table("ft", "md", "an", "nw", "ft_with_annotations")
+        # show_all_files_in_table("ft", "md", "an", "nw", "ft_with_annotations")
 
         st.session_state["ft_with_annotations"] = st.session_state.get("ft_with_annotations", pd.DataFrame())
         
     if file_origin == "Quantification table and meta data files":
-        if st.session_state.get("ft_with_annotations") is not None:
-            st.session_state["ft_with_annotations"] = None
-        if st.session_state.get("nw") is not None:
-            st.session_state["nw"] = None
-        if st.session_state.get("an") is not None:
-            st.session_state["an"] = None
+        reset_dataframes()
         
         st.info("💡 Upload tables in txt (tab separated), tsv, csv or xlsx (Excel) format.")
         c1, c2 = st.columns(2)
@@ -240,7 +241,7 @@ else:
             # Ensure the Feature Annotation Table has the same index as the Quantification Table
             if st.session_state["ft"] is not None and not st.session_state["ft"].empty and st.session_state["an"] is not None:
                 if not st.session_state["an"].empty:
-                    st.session_state["an"] = st.session_state["an"].set_index(st.session_state["ft"].index())
+                    st.session_state["an"] = st.session_state["an"].set_index(st.session_state["ft"].index)
 
         st.session_state["ft"] = ft
         st.session_state["md"] = md
@@ -266,26 +267,22 @@ else:
                 st.error(msg)
             elif level == "info":
                 st.info(msg)
+
+        if 'ft_with_annotations' in st.session_state and st.session_state["ft_with_annotations"] is not None:
+            column_name = st.session_state.get("name_key", None)
+            if column_name in st.session_state["ft_with_annotations"].columns:
+                st.session_state["name_column"] = st.session_state["ft_with_annotations"][column_name].str.replace(' ', '_').fillna("NA") 
+                name_column = st.session_state["name_column"]  # Keep as a pd.Series
+
+                ft['metabolite'] = [f"{k}&{name_column.at[i]}" for i, k in enumerate(ft.index)]
+                st.session_state["ft"] = ft.set_index('metabolite')
+            else:
+                st.session_state["ft"] = ft
     
     if ft is not None and not ft.empty and not ft.index.is_unique:
         st.error("Please upload a feature matrix with unique metabolite names.")
     if ft is not None and not ft.empty and md is not None and not md.empty:
         st.success("Files loaded successfully!")
-
-    if 'ft_with_annotations' in st.session_state and st.session_state["ft_with_annotations"] is not None:
-        column_name = st.session_state.get("name_key", None)
-        st.session_state["name_column"] = st.session_state["ft_with_annotations"][column_name].str.replace(' ', '_').fillna("NA")
-        name_column = st.session_state["name_column"]  # Keep as a pd.Series
-
-        i = 0
-
-        for k in ft.index:
-            ft.at[k, "metabolite"] = f"{k}&{name_column.at[i]}"
-            i += 1
-        st.session_state["ft"] = ft.set_index('metabolite')
-        
-        # show_table(st.session_state["ft"])
-
 
     st.markdown("# Data Cleanup")
     
@@ -419,14 +416,13 @@ else:
                     )
                     imputation = c1.checkbox("Impute missing values?", False, help=f"These values will be filled with random number between 1 and {cutoff_LOD} (Limit of Detection) during imputation.")
                     if imputation:
-                        if cutoff_LOD > 1:
+                        if cutoff_LOD is not None and cutoff_LOD > 1:
                             c1, c2 = st.columns(2)
                             ft = impute_missing_values(ft, cutoff_LOD)
                             with st.expander(f"Imputed data - features: {ft.shape[0]}, samples: {ft.shape[1]}"):
                                 show_table(ft.head(), "imputed")
                         else:
                             st.warning(f"Can't impute with random values between 1 and lowest value, which is {cutoff_LOD} (rounded).")
-                        
                         st.session_state['imputation_done'] = True
                     else:
                         st.session_state['imputation_done'] = False
@@ -464,7 +460,7 @@ else:
                         fig = get_feature_frequency_fig(ft)
                         show_fig(fig, "feature-intensity-frequency")
                     with tab2:
-                        fig = get_missing_values_per_feature_fig(ft, cutoff_LOD)
+                        fig = get_missing_values_per_feature_fig(ft, cutoff_LOD if cutoff_LOD is not None else 0)
                         show_fig(fig, "missing-values")
             else:
                 st.error("No features left after blank removal!")

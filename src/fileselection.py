@@ -45,7 +45,6 @@ def get_new_index(df):
         return df, "fail"
     return df, "success"
 
-
 allowed_formats = "Allowed formats: csv (comma separated), tsv (tab separated), txt (tab separated), xlsx (Excel file)."
 
 
@@ -71,6 +70,7 @@ def load_ft(ft_file):
         "You can either manually choose another column as the metabolite ID, "
         "or let the app automatically create a unique index based on ID, m/z, and RT."
     )):
+            
             ft, msg = get_new_index(ft)
             if msg == "no matching columns":
                 st.warning(
@@ -278,42 +278,45 @@ def load_from_gnps2_cmn(task_id):
 def get_gnps_tables():
 
     ft = st.session_state.get("ft_gnps")
+    ft = st.session_state.get("ft_gnps")
     md = st.session_state.get("md_gnps")
     an = st.session_state.get("an_gnps")
     nw = st.session_state.get("nw_gnps")
+    merged = None
+    name_key = None
 
-    if "ft_gnps" in st.session_state:
-        if not st.session_state["ft_gnps"].empty:
+    if "ft_gnps" in st.session_state and st.session_state["ft_gnps"] is not None:
+        if hasattr(st.session_state["ft_gnps"], "empty") and not st.session_state["ft_gnps"].empty:
             ft = st.session_state["ft_gnps"]
-   
-    if "md_gnps" in st.session_state:
-        if not st.session_state["md_gnps"].empty:
+    if "md_gnps" in st.session_state and st.session_state["md_gnps"] is not None:
+        if hasattr(st.session_state["md_gnps"], "empty") and not st.session_state["md_gnps"].empty:
             md = st.session_state["md_gnps"]
-
-    if "an_gnps" in st.session_state:
-        if not st.session_state["an_gnps"].empty:
+    if "an_gnps" in st.session_state and st.session_state["an_gnps"] is not None:
+        if hasattr(st.session_state["an_gnps"], "empty") and not st.session_state["an_gnps"].empty:
             an = st.session_state["an_gnps"]
-    
-    if "nw_gnps" in st.session_state:
-        if not st.session_state["nw_gnps"].empty:
+    if "nw_gnps" in st.session_state and st.session_state["nw_gnps"] is not None:
+        if hasattr(st.session_state["nw_gnps"], "empty") and not st.session_state["nw_gnps"].empty:
             nw = st.session_state["nw_gnps"]
 
-    if st.session_state["an_gnps"] is not None and not st.session_state["an_gnps"].empty:
+    if (
+        "an_gnps" in st.session_state and st.session_state["an_gnps"] is not None
+        and hasattr(st.session_state["an_gnps"], "empty") and not st.session_state["an_gnps"].empty
+        and ft is not None and hasattr(ft, 'merge')
+    ):
         an = st.session_state["an_gnps"]
-        ft['row ID'] = ft['row ID'].astype(str)
-        an['#Scan#'] = an['#Scan#'].astype(str)
-        name_key = "Compound_Name"
-
-        # Merge on index vs. #Scan# column
-        merged = ft.merge(
-            an, 
-            left_on="row ID",
-            right_on="#Scan#",
-            how="left",
-            suffixes=("", "_an"))
+        if 'row ID' in ft.columns and '#Scan#' in an.columns:
+            ft['row ID'] = ft['row ID'].astype(str)
+            an['#Scan#'] = an['#Scan#'].astype(str)
+            name_key = "Compound_Name"
+            merged = ft.merge(
+                an, 
+                left_on="row ID",
+                right_on="#Scan#",
+                how="left",
+                suffixes=("", "_an"))
     else:
         an = None
-
+    return ft, md, an, nw, merged, name_key
     return ft, md, an, nw, merged, name_key
 
 def get_uploaded_tables():
@@ -436,6 +439,8 @@ def merge_annotation(ft, an):
         how="left",          # only IDs from feature table
         suffixes=("", "_an")) # avoid column name clashes
     
+
+    
     return merged, name_key
 
 def merge_annotation_gnps(ft, an):
@@ -455,6 +460,7 @@ def merge_annotation_gnps(ft, an):
         how="left",
         suffixes=("", "_an")
     )
+
     return merged, name_key
 
 ##################

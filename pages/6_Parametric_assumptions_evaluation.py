@@ -13,13 +13,22 @@ with st.expander("📖 Why is this important?"):
         "When analyzing data, it is important to choose the appropriate statistical test to use. One of the factors to consider is whether the data follows a normal distribution and has equal variance. This is because many statistical tests assume that the data is normally distributed and has equal variance. If the data violates these assumptions, parametric tests may not be appropriate and non-parametric tests should be used instead. In this context, testing for normal distribution and equal variance is crucial in determining the most suitable statistical test for the analysis."
     )
 
-if not st.session_state.data.empty:
+if st.session_state.data is not None and not st.session_state.data.empty:
     c1, c2 = st.columns(2)
     c1.selectbox(
         "select attribute of interest",
         options=[c for c in st.session_state.md.columns if len(set(st.session_state.md[c])) > 1],
         key="test_attribute",
     )
+
+    # Check if test_attribute is valid before accessing DataFrame
+    if (
+        st.session_state.test_attribute is None
+        or st.session_state.test_attribute not in st.session_state.md.columns
+    ):
+        st.warning("Please select a valid attribute for parametric assumption evaluation.")
+        st.stop()
+
     attribute_options = list(
         set(st.session_state.md[st.session_state.test_attribute].dropna())
     )
@@ -52,4 +61,4 @@ When a larger number of data points indicate low p-values, it would be advisable
     )
     st.image("assets/figures/decision.png")
 else:
-    st.warning("Please complete data preparation step first!")
+    st.warning("⚠️ Please complete data preparation step first!")

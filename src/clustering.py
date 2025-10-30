@@ -73,7 +73,7 @@ def get_clustermap(data, color, vmin=None, vmax=None, dendro_height=0.2, heatmap
             colorbar=dict(title=""),
             name="",  # Hide trace name in hover
             customdata=np.array(full_names)[:, None].repeat(ord_ft.shape[1], axis=1),
-            hovertemplate="Filename: %{x}<br>Metabolite: %{customdata}<br>Abundance: %{z}<extra></extra>",
+            hovertemplate="Filename: %{x}<br>Metabolite&Name: %{customdata}<br>Abundance: %{z}<extra></extra>",
             # showscale=True
         ),
         row=2, col=1,

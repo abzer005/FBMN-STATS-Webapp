@@ -23,6 +23,10 @@ def run_random_forest(attribute, n_trees, random_seed=None):
     labels = st.session_state.md[[attribute]]
     rf_data = pd.concat([st.session_state.data, labels], axis=1)
 
+    # Check for NaN in labels (y)
+    if labels.isnull().values.any():
+        raise ValueError("Input y contains NaN. Please remove or impute missing values in your class/attribute column before running the model.")
+
     # Change the values of the attribute of interest from strings to a numerical
     enc = OrdinalEncoder()
     # st.write(labels.value_counts()) # Displays the sample size for each group

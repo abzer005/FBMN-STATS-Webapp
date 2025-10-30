@@ -74,7 +74,7 @@ def load_ft(ft_file):
             ft, msg = get_new_index(ft)
             if msg == "no matching columns":
                 st.warning(
-                    "Could not determine index automatically, missing m/z and/or RT information in column names."
+                    "Could not determine index automatically, missing m/z and/or RT information in column names. Please upload a proper feature table or select the metabolite ID column manually."
                 )
         else:
             metabolite_col = st.selectbox(
@@ -298,11 +298,9 @@ def get_gnps_tables():
         if hasattr(st.session_state["nw_gnps"], "empty") and not st.session_state["nw_gnps"].empty:
             nw = st.session_state["nw_gnps"]
 
-    if (
-        "an_gnps" in st.session_state and st.session_state["an_gnps"] is not None
+    if ("an_gnps" in st.session_state and st.session_state["an_gnps"] is not None
         and hasattr(st.session_state["an_gnps"], "empty") and not st.session_state["an_gnps"].empty
-        and ft is not None and hasattr(ft, 'merge')
-    ):
+        and ft is not None and hasattr(ft, 'merge')):
         an = st.session_state["an_gnps"]
         if 'row ID' in ft.columns and '#Scan#' in an.columns:
             ft['row ID'] = ft['row ID'].astype(str)
@@ -316,7 +314,7 @@ def get_gnps_tables():
                 suffixes=("", "_an"))
     else:
         an = None
-    return ft, md, an, nw, merged, name_key
+
     return ft, md, an, nw, merged, name_key
 
 def get_uploaded_tables():
@@ -420,11 +418,21 @@ def show_all_files_in_table(ft_file, md_file, an_file, nw_file, ft_merged):
 
 ###MERGE FUNCTIONS###
 def merge_annotation(ft, an):
+    # Handle None or empty DataFrames gracefully
+    if ft is None or an is None or not hasattr(ft, 'columns') or not hasattr(an, 'columns') or ft.empty or an.empty:
+        return pd.DataFrame(), None
+    
+    ft_columns = list(ft.columns)
+    an_columns = list(an.columns)
+    index1 = ft_columns.index("row ID") if "row ID" in ft_columns else 0
+    index2 = an_columns.index("#Scan#") if "#Scan#" in an_columns else 0
+    index3 = an_columns.index("Compound_Name") if "Compound_Name" in an_columns else 0
+    
     col1, col2, col3 = st.columns(3)
     # Let user choose the join keys (one from each table)
-    ft_key = col1.selectbox("Column in feature table to merge", list(ft.columns), key="merge_ft_key")
-    an_key = col2.selectbox("Column in annotation table to merge", list(an.columns), key="merge_an_key")
-    name_key = col3.selectbox("Name column in annotation table", list(an.columns), key="name_an_key")
+    ft_key = col1.selectbox("Column in feature table to merge", list(ft.columns), key="merge_ft_key", index=index1)
+    an_key = col2.selectbox("Column in annotation table to merge", list(an.columns), key="merge_an_key", index=index2)
+    name_key = col3.selectbox("Name column in annotation table", list(an.columns), key="name_an_key", index=index3)
 
     # Coerce keys to string and do a LEFT merge (keep only IDs present in ft)
     ft_merge = ft.copy()
@@ -438,8 +446,6 @@ def merge_annotation(ft, an):
         right_on=an_key,
         how="left",          # only IDs from feature table
         suffixes=("", "_an")) # avoid column name clashes
-    
-
     
     return merged, name_key
 

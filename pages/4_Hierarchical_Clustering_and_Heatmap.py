@@ -20,10 +20,10 @@ The dataset used for both HCA and heatmap is the data submitted for statistics f
     )
     st.image("assets/figures/clustering.png")
 
-if not st.session_state.data.empty:
+if (hasattr(st.session_state, 'data') and st.session_state.data is not None and not st.session_state.data.empty):
     t1, t2 = st.tabs(["🧬 Clustered Heatmap", "📁 Heatmap Data"])
     with t1:
-        st.info("Due to the large number of features, the row labels in the clustered heatmap may not always be fully visible or representative. For a more detailed view, please zoom in to explore the actual range of values. You can also hover over any row or feature in the heatmap to display the corresponding sample name and feature name. Double click to zoom out.")
+        st.info("Due to the large number of features, the row/column labels in the clustered heatmap may not always be fully visible or representative. For a more detailed view, please zoom in to explore the actual range of values. You can also hover over any row or feature in the heatmap to display the corresponding sample name and feature name. Double click to zoom out.")
         color = st.selectbox(
             "Select heatmap color palette",
             options=[
@@ -32,9 +32,10 @@ if not st.session_state.data.empty:
             ],
             index=0
         )
-        fig, df = get_clustermap(st.session_state.data, color)
-        show_fig(fig, "clustermap")
+        st.session_state['heatmap_color'] = color
+        fig, df = get_clustermap(st.session_state.data, st.session_state['heatmap_color'])
+        st.session_state["cluster_fig"] = show_fig(fig, "clustermap")
     with t2:
-        show_table(df, "heatmap-data")
+        st.session_state["heatmap_data"] = show_table(df, "heatmap-data")
 else:
-    st.warning("Please complete data preparation step first!")
+    st.warning("⚠️ Please complete data preparation step first!")

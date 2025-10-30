@@ -4,14 +4,21 @@ import numpy as np
 import pingouin as pg
 import plotly.express as px
 import plotly.graph_objects as go
+import time
 
-def gen_anova_data(df, columns, groups_col):
+if 'name_column' not in st.session_state:
+    st.session_state['name_column'] = None
+
+def gen_anova_data(df, columns, groups_col, _progress_callback=None):
     """
     Robustly run pg.anova for each column in `columns` and yield
     (metabolite, p-value, F-value). This function tolerates variations
     in pingouin output column/row names.
     """
-    for col in columns:
+    total = len(columns)
+    start_time = time.time()
+    for idx, col in enumerate(columns):
+        iter_start = time.time()
         try:
             result = pg.anova(data=df, dv=col, between=groups_col, detailed=True)
         except Exception as e:
@@ -72,6 +79,14 @@ def gen_anova_data(df, columns, groups_col):
         if p is None or f is None:
             continue
 
+        # Progress callback
+        if _progress_callback is not None:
+            elapsed = time.time() - start_time
+            avg_time = elapsed / (idx + 1)
+            est_total = avg_time * total
+            est_left = max(0, est_total - elapsed)
+            _progress_callback(idx + 1, total, est_left)
+
         yield col, p, f
 
 def add_p_correction_to_anova(df, correction):
@@ -86,32 +101,22 @@ def add_p_correction_to_anova(df, correction):
     df.sort_values("p", inplace=True)
     return df
 
-@st.cache_data(show_spinner=False)
-def anova(df, attribute, correction, elements):
-    with st.spinner("Running ANOVA..."):
-        """
-        Run ANOVA on metabolite columns in `df` using the metadata attribute `attribute`.
-        If `elements` is provided (list of category values), only samples whose metadata
-        attribute is in `elements` are included in the test.
-        """
-        combined = pd.concat([df, st.session_state.md], axis=1)
+def anova(df, attribute, correction, elements, _progress_callback=None):
+    """
+    Run ANOVA on metabolite columns in `df` using the metadata attribute `attribute`.
+    If `elements` is provided (list of category values), only samples whose metadata
+    attribute is in `elements` are included in the test.
+    """
+    combined = pd.concat([df, st.session_state.md], axis=1)
 
-        if elements is not None:
-            combined = combined[combined[attribute].isin(elements)]
+    if elements is not None:
+        combined = combined[combined[attribute].isin(elements)]
 
-        df_res = pd.DataFrame(
-            np.fromiter(
-                gen_anova_data(
-                    combined,
-                    df.columns,
-                    attribute,
-                ),
-                dtype=[("metabolite", "U100"), ("p", "f"), ("F", "f")],
-            )
-        )
-        df_res = df_res.dropna()
-        df_res = add_p_correction_to_anova(df_res, correction)
-        return df_res.set_index("metabolite")
+    results = list(gen_anova_data(combined, df.columns, attribute, _progress_callback=_progress_callback))
+    df_res = pd.DataFrame(results, columns=["metabolite", "p", "F"])
+    df_res = df_res.dropna()
+    df_res = add_p_correction_to_anova(df_res, correction)
+    return df_res.set_index("metabolite")
 
 def _get_feature_name_map():
     """Return a mapping metabolite_id -> feature name. Look for common name columns
@@ -125,17 +130,19 @@ def _get_feature_name_map():
             return ft[c].to_dict()
     return None
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Creating ANOVA plots...")
 def get_anova_plot(anova):
     """ANOVA scatter: x=log(F), y=-log(p). Add hover text with feature name if available."""
     feature_map = _get_feature_name_map()
+    
+
     def create_hovertexts(indexes):
         hover = []
+        # Generate hovertexts for each metabolite index
         for m in indexes:
-            if feature_map and m in feature_map:
-                hover.append(f"{m} — {feature_map[m]}")
-            else:
-                hover.append(str(m))
+            metabolite_name = feature_map[m] if feature_map and m in feature_map else str(m)
+            hover.append(f"metabolite&name: {metabolite_name}")
+        
         return hover
 
     fig = go.Figure()
@@ -196,7 +203,7 @@ def get_anova_plot(anova):
     fig.update_yaxes(title_standoff=10)
     return fig
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Creating metabolite boxplot...")
 def get_metabolite_boxplot(anova, metabolite):
     """Build a boxplot for *any* metabolite (not only significant ones).
     Adds per-sample hover that includes filename or sample id.
@@ -220,7 +227,7 @@ def get_metabolite_boxplot(anova, metabolite):
     df["metabolite_name"] = metabolite_name
 
     df["intensity"] = df[metabolite]
-    df["hovertext"] = df.apply(lambda row: f"filename: {row['filename']}<br>attribute&group: {attribute}, {row[attribute]}<br>metabolite: {row['metabolite_name']}<br>intensity: {row['intensity']}", axis=1)
+    df["hovertext"] = df.apply(lambda row: f"filename: {row['filename']}<br>attribute&group: {attribute}, {row[attribute]}<br>metabolite&name: {row['metabolite_name']}<br>intensity: {row['intensity']}", axis=1)
 
     try:
         p_value_str = f"{float(p_value):.2e}"
@@ -251,11 +258,21 @@ def get_metabolite_boxplot(anova, metabolite):
     )
     return fig
 
-def gen_pairwise_tukey(df, metabolites, attribute):
-    """Yield results for pairwise Tukey test for all metabolites between two options within the attribute."""
-    for metabolite in metabolites:
+def gen_pairwise_tukey(df, _metabolites, attribute, _progress_callback=None):
+    """Return a list of results for pairwise Tukey test for all metabolites between two options within the attribute."""
+    import time
+    results = []
+    total = len(_metabolites)
+    start_time = time.time()
+    for idx, metabolite in enumerate(_metabolites):
         tukey = pg.pairwise_tukey(df, dv=metabolite, between=attribute)
-        yield (
+        if _progress_callback is not None:
+            elapsed = time.time() - start_time
+            avg_time = elapsed / (idx + 1)
+            est_total = avg_time * total
+            est_left = max(0, est_total - elapsed)
+            _progress_callback(idx + 1, total, est_left)
+        results.append((
             metabolite,
             tukey.loc[0, "diff"],
             tukey.loc[0, "p-tukey"],
@@ -264,7 +281,8 @@ def gen_pairwise_tukey(df, metabolites, attribute):
             tukey.loc[0, "B"],
             tukey.loc[0, "mean(A)"],
             tukey.loc[0, "mean(B)"],
-        )
+        ))
+    return results
 
 def add_p_value_correction_to_tukeys(tukey, correction):
     if "p-corrected" not in tukey.columns:
@@ -276,53 +294,54 @@ def add_p_value_correction_to_tukeys(tukey, correction):
         tukey.sort_values("stats_p", inplace=True)
     return tukey
 
-@st.cache_data(show_spinner=False)
-def tukey(df, attribute, elements, correction):
-    with st.spinner("Running Tukey's..."): 
-        significant_metabolites = df.index 
-        data = pd.concat(
-            [
-                st.session_state.data.loc[:, significant_metabolites],
-                st.session_state.md.loc[:, attribute],
+def tukey(df, attribute, elements, correction, _progress_callback=None):
+    """
+    Run Tukey's test for all significant metabolites, with progress callback.
+    """
+    significant_metabolites = df.index 
+    data = pd.concat(
+        [
+            st.session_state.data.loc[:, significant_metabolites],
+            st.session_state.md.loc[:, attribute],
+        ],
+        axis=1,
+    )
+    data = data[data[attribute].isin(elements)]
+    tukey = pd.DataFrame(
+        np.array(
+            gen_pairwise_tukey(data, significant_metabolites, attribute, _progress_callback=_progress_callback),
+            dtype=[
+                ("stats_metabolite", "U100"),
+                (f"diff", "f"),
+                ("stats_p", "f"),
+                ("attribute", "U100"),
+                ("A", "U100"),
+                ("B", "U100"),
+                ("mean(A)", "f"),
+                ("mean(B)", "f"),
             ],
-            axis=1,
         )
-        data = data[data[attribute].isin(elements)]
-        tukey = pd.DataFrame(
-            np.fromiter(
-                gen_pairwise_tukey(data, significant_metabolites, attribute),
-                dtype=[
-                    ("stats_metabolite", "U100"),
-                    (f"diff", "f"),
-                    ("stats_p", "f"),
-                    ("attribute", "U100"),
-                    ("A", "U100"),
-                    ("B", "U100"),
-                    ("mean(A)", "f"),
-                    ("mean(B)", "f"),
-                ],
-            )
-        )
-        tukey = tukey.dropna()
-        tukey = add_p_value_correction_to_tukeys(tukey, correction)
-        tukey = tukey.rename(columns={
-            "stats_metabolite": "metabolite",
-            "stats_p": "p",
-            "stats_significant": "significant"
-        })
-        tukey_display = tukey.copy()
-        if "p" in tukey_display.columns:
-            tukey_display["p"] = tukey_display["p"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
-        cols = [c for c in tukey_display.columns if c != "diff"] + ["diff"] if "diff" in tukey_display.columns else tukey_display.columns
-        tukey_display = tukey_display[cols]
-        tukey_display._original = tukey  
-        return tukey_display
+    )
+    tukey = tukey.dropna()
+    tukey = add_p_value_correction_to_tukeys(tukey, correction)
+    tukey = tukey.rename(columns={
+        "stats_metabolite": "metabolite",
+        "stats_p": "p",
+        "stats_significant": "significant"
+    })
+    tukey_display = tukey.copy()
+    if "p" in tukey_display.columns:
+        tukey_display["p"] = tukey_display["p"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
+    cols = [c for c in tukey_display.columns if c != "diff"] + ["diff"] if "diff" in tukey_display.columns else tukey_display.columns
+    tukey_display = tukey_display[cols]
+    tukey_display._original = tukey  
+    return tukey_display
 
 def _get_tukey_feature_map(df_tukey):
     """Look up feature name mapping for stats_metabolite similar to anova."""
     return _get_feature_name_map()
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Creating Tukey test statistic plots...")
 def get_tukey_teststat_plot(df):
     """Plot the test-statistic/diff (existing behaviour) but add hover text."""
     feature_map = _get_tukey_feature_map(df)
@@ -384,7 +403,7 @@ def get_tukey_teststat_plot(df):
     )
     return fig
 
-@st.cache_resource
+@st.cache_resource(show_spinner="Creating Tukey volcano plot...")
 def get_tukey_volcano_plot(df):
     """Volcano plot for Tukey: x = log2 fold change (mean(B)/mean(A)), y = -log10(p-value).
     Adds metabolite/feature hover labels.

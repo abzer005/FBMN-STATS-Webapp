@@ -12,7 +12,7 @@ with st.expander("📖 About"):
     st.markdown(
         "Principal Component Analysis (PCA) is a statistical method used for dimensionality reduction in multivariate data analysis. It involves transforming a set of correlated variables into a smaller set of uncorrelated variables, known as principal components. These principal components are ordered by their ability to explain the variability in the data, with the first component accounting for the highest amount of variance. PCA can be used to simplify complex data sets, identify patterns and relationships among variables, and remove noise or redundancy from data."
     )
-if not st.session_state.data.empty:
+if st.session_state.data is not None and not st.session_state.data.empty:
     c1, c2 = st.columns(2)
 
     # Set or update max components dynamically

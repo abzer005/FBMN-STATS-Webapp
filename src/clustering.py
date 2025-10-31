@@ -54,21 +54,26 @@ def get_clustermap(data, color, vmin=None, vmax=None, dendro_height=0.2, heatmap
         vertical_spacing=0
     )
 
+    values = ord_ft.index.tolist()
     # Add dendrogram traces
     for trace in dendro['data']:
         fig.add_trace(trace, row=1, col=1)
     # Add heatmap trace(s)
+    # Prepare row labels (split) and full names for hover
+    row_labels = [y.split("&")[0] for y in ord_ft.index]
+    full_names = list(ord_ft.index)
     fig.add_trace(
         go.Heatmap(
             z=ord_ft.values,
             x=list(ord_ft.columns),
-            y=ord_ft.index.tolist(),
+            y=row_labels,
             colorscale=color,
             zmin=vmin,
             zmax=vmax,
             colorbar=dict(title=""),
             name="",  # Hide trace name in hover
-            hovertemplate="Filename: %{x}<br>Metabolite: %{y}<br>Abundance: %{z}<extra></extra>",
+            customdata=np.array(full_names)[:, None].repeat(ord_ft.shape[1], axis=1),
+            hovertemplate="Filename: %{x}<br>Metabolite&Name: %{customdata}<br>Abundance: %{z}<extra></extra>",
             # showscale=True
         ),
         row=2, col=1,

@@ -22,7 +22,7 @@ try:
         st.image("assets/figures/pcoa.png")
 
 
-    if not st.session_state.data.empty:
+    if st.session_state.data is not None and not st.session_state.data.empty:
         c1, c2 = st.columns(2)
         with c1: 
             st.selectbox(
@@ -41,6 +41,12 @@ try:
         max_allowed = min(st.session_state.data.shape[0], st.session_state.data.shape[1])
         n_component = min(10, max_allowed)
         st.session_state["n_components"] = n_component
+
+
+        # Check if pcoa_attribute is valid before accessing DataFrame
+        if (st.session_state.pcoa_attribute is None or st.session_state.pcoa_attribute not in st.session_state.md.columns):
+            st.warning("Please select a valid attribute for PCoA.\n\nA valid attribute is required to group your samples for multivariate analysis. Make sure to choose a column from your metadata that contains categorical groupings (e.g., treatment, condition, or sample type) with at least two unique values. If no options appear, check that your metadata table is loaded and contains appropriate columns.")
+            st.stop()
 
         attribute_series = st.session_state.md[st.session_state.pcoa_attribute].dropna()
         unique_categories = attribute_series.nunique()
@@ -101,7 +107,7 @@ try:
                         show_table(pcoa_result.samples.iloc[:, :10], "principal-coordinates")
 
     else:
-        st.warning("Please complete data preparation step first!")
+        st.warning("⚠️ Please complete data preparation step first!")
 
 except ModuleNotFoundError:
     st.error("This page requires the `skbio` package, which is not available in the Windows app.")

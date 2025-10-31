@@ -13,7 +13,7 @@ with st.expander("📖 About"):
     st.image("assets/figures/kruskal-wallis.png")
     st.image("assets/figures/dunn.png")
 
-if not st.session_state.data.empty:
+if st.session_state.data is not None and not st.session_state.data.empty:
     c1, c2 = st.columns(2)
 
     prev_kruskal_attribute = st.session_state.get("_prev_kruskal_attribute", None)
@@ -39,7 +39,7 @@ if not st.session_state.data.empty:
         options=attribute_options,
         default=attribute_options,
         key="kruskal_groups",
-        help="For comparing 2 groups, use the t-test page instead",
+        help="For comparing 2 groups, use the t-test page instead.  If button is disabled, select a different attribute.",
     )
 
     if prev_kruskal_groups is not None and set(kruskal_groups) != set(prev_kruskal_groups):
@@ -55,15 +55,32 @@ if not st.session_state.data.empty:
         if "kruskal_groups" not in st.session_state or len(st.session_state.kruskal_groups) < min_required:
             st.error(f"At least {min_required} groups must be selected to run Kruskal Wallis.")
         else:
+            import time
+            progress_placeholder = st.empty()
+            time_placeholder = st.empty()
+            start_time = time.time()
+            def progress_callback(done, total, est_left):
+                progress = done / total
+                elapsed = time.time() - start_time
+                if done > 0:
+                    est_total = elapsed / done * total
+                    est_left = est_total - elapsed
+                else:
+                    est_left = 0
+                progress_placeholder.progress(progress, text=f"Running Kruskal Wallis: {done}/{total}")
+                time_placeholder.info(f"Estimated time left: {int(est_left)} seconds")
             st.session_state.df_kruskal = kruskal_wallis(
                 st.session_state.data,
                 st.session_state.kruskal_attribute,
                 corrections_map[st.session_state.p_value_correction],
-                elements=st.session_state.kruskal_groups
+                elements=st.session_state.kruskal_groups,
+                _progress_callback=progress_callback
             )
+            progress_placeholder.empty()
+            time_placeholder.empty()
             st.rerun()
 
-    if not st.session_state.df_kruskal.empty:
+    if st.session_state.df_kruskal is not None and not st.session_state.df_kruskal.empty:
         dunn_options = list(st.session_state.kruskal_groups) if "kruskal_groups" in st.session_state else []
         dunn_options.sort()
 
@@ -88,12 +105,29 @@ if not st.session_state.data.empty:
         )
 
         if st.session_state.run_dunn:
+            import time
+            progress_placeholder = st.empty()
+            time_placeholder = st.empty()
+            start_time = time.time()
+            def progress_callback(done, total, est_left):
+                progress = done / total
+                elapsed = time.time() - start_time
+                if done > 0:
+                    est_total = elapsed / done * total
+                    est_left = est_total - elapsed
+                else:
+                    est_left = 0
+                progress_placeholder.progress(progress, text=f"Running Dunn's: {done}/{total}")
+                time_placeholder.info(f"Estimated time left: {int(est_left)} seconds")
             st.session_state.df_dunn = dunn(
                 st.session_state.df_kruskal,
                 st.session_state.kruskal_attribute,
                 st.session_state.dunn_elements,
-                corrections_map[st.session_state.p_value_correction]
+                corrections_map[st.session_state.p_value_correction],
+                _progress_callback=progress_callback
             )
+            progress_placeholder.empty()
+            time_placeholder.empty()
             st.rerun()
 
     tab_options = [
@@ -102,11 +136,11 @@ if not st.session_state.data.empty:
         "📊 KW: metabolites (boxplots)",
     ]
 
-    if not st.session_state.df_dunn.empty:
+    if (hasattr(st.session_state, 'df_dunn') and st.session_state.df_dunn is not None and not st.session_state.df_dunn.empty):
         tab_options += ["📈 Dunn's: plot", "📁 Dunn's: result table"]
 
 
-    if not st.session_state.df_kruskal.empty:
+    if st.session_state.df_kruskal is not None and not st.session_state.df_kruskal.empty:
         tabs = st.tabs(tab_options)
         with tabs[0]:
             fig = get_kruskal_plot(st.session_state.df_kruskal)
@@ -135,27 +169,42 @@ if not st.session_state.data.empty:
         with tabs[2]:
             # Include both significant and insignificant metabolites in dropdown
             all_metabolites = sorted(list(st.session_state.df_kruskal["metabolite"]))
+            def metabolite_label(m):
+                return str(m).split("&")[0] if "&" in str(m) else str(m)
             st.selectbox(
                 "select metabolite",
                 all_metabolites,
                 key="kruskal_metabolite",
+                format_func=metabolite_label
             )
 
             met = st.session_state.kruskal_metabolite
             df_kruskal = st.session_state.df_kruskal
+            # Show full metabolite name above the boxplot if available
+            full_met_name = None
+            # Try to get full name from ft_gnps if available
+            ft = st.session_state.get("ft_gnps", None)
+            if ft is not None and not ft.empty and met in ft.index:
+                name_cols = [c for c in ("metabolite_name", "name", "feature_name", "compound_name", "compound") if c in ft.columns]
+                if name_cols:
+                    name_col = name_cols[0]
+                    full_met_name = ft.at[met, name_col]
             if met in df_kruskal.index and "significant" in df_kruskal.columns:
                 is_sig = df_kruskal.loc[met, "significant"]
                 desc = "Significant" if is_sig else "Insignificant"
-                st.write(f"**{desc} Metabolite: {met}**")
-            
+                if full_met_name:
+                    st.write(f"**{desc} Metabolite: {full_met_name}**")
+                else:
+                    st.write(f"**{desc} Metabolite: {met}**")
+
             fig = get_metabolite_boxplot(
                 st.session_state.df_kruskal,
                 st.session_state.kruskal_metabolite,
             )
-            
+
             show_fig(fig, f"kruskal-{st.session_state.kruskal_metabolite}")
         
-        if not st.session_state.df_dunn.empty:
+        if (hasattr(st.session_state, 'df_dunn') and st.session_state.df_dunn is not None and not st.session_state.df_dunn.empty):
             with tabs[3]:
                 #st.write("Dunn's test plots are not yet implemented.")
                 fig1 = get_dunn_teststat_plot(getattr(st.session_state.df_dunn, '_original', st.session_state.df_dunn))
@@ -201,6 +250,4 @@ if not st.session_state.data.empty:
                 else:
                     st.dataframe(df_dunn, use_container_width=True, hide_index=True)
 else:
-    st.warning(
-        "Please complete data clean up step first! (Preparing data for statistical analysis)"
-    )
+    st.warning("⚠️ Please complete data preparation step first!")

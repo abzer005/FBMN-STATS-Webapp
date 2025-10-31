@@ -4,15 +4,19 @@ import pingouin as pg
 import plotly.express as px
 import numpy as np
 
-
-@st.cache_data
-def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correction, p_correction):
+@st.cache_data(show_spinner="Calculating t-test results...")
+def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correction, p_correction, _progress_callback=None):
     df = pd.concat([st.session_state.data, st.session_state.md], axis=1)
     ttest = []
-    for col in st.session_state.data.columns:
+    columns = list(st.session_state.data.columns)
+    total = len(columns)
+    start_time = None
+    for idx, col in enumerate(columns):
+        if idx == 0:
+            import time
+            start_time = time.time()
         group1 = df[col][df[ttest_attribute] == target_groups[0]]
         group2 = df[col][df[ttest_attribute] == target_groups[1]]
-        
         # Determine which t-test to use
         use_welch = False
         if correction == "auto":
@@ -43,6 +47,12 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
             result["ttest_type"] = "Student"
         result["metabolite"] = col
         ttest.append(result)
+        # Progress callback with estimated time left
+        if _progress_callback is not None:
+            elapsed = time.time() - start_time if start_time else 0
+            done = idx + 1
+            est_left = (elapsed / done) * (total - done) if done > 0 else 0
+            _progress_callback(done, total, est_left)
 
     ttest = pd.concat(ttest).set_index("metabolite")
     ttest = ttest.dropna()
@@ -59,44 +69,63 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
 
 @st.cache_resource
 def plot_ttest(df):
+
+    # Use the correct t-statistic column name from pingouin output
+    t_col = None
+    for candidate in ["T", "T-val", "t", "tval"]:
+        if candidate in df.columns:
+            t_col = candidate
+            break
+    if t_col is None:
+        raise KeyError("No t-statistic column found in t-test results. Columns: " + str(df.columns))
+
+
+    # Add a column for -log(p-corrected) and significance label
+    df = df.copy()
+    df["-log_p_corrected"] = df["p-corrected"].apply(lambda x: -np.log(x))
+    df["sig_label"] = df["significance"].apply(lambda x: "significant" if x else "insignificant")
+    df["metabolite_name"] = df.index
+
+
+    if df.empty:
+        st.warning("No t-test results to display. Please check your data or selection.")
+        import plotly.graph_objects as go
+        return go.Figure()
+
     fig = px.scatter(
-        x=df["T"],
-        y=df["p-corrected"].apply(lambda x: -np.log(x)),
+        df,
+        x=t_col,
+        y="-log_p_corrected",
+        color="sig_label",
+        color_discrete_map={"significant": "#ef553b", "insignificant": "#696880"},
+        custom_data=["metabolite_name"],
         template="plotly_white",
         width=600,
         height=600,
-        color=df["significance"].apply(lambda x: str(x)),
-        color_discrete_sequence=["#ef553b", "#696880"],
-        hover_name=df.index,
     )
-    
-    xlim = [df["T"].min(), df["T"].max()]
-    x_padding = abs(xlim[1]-xlim[0])/5
-    fig.update_layout(xaxis=dict(range=[xlim[0]-x_padding, xlim[1]+x_padding]))
 
-    r = df["significance"].sum()
-    if r > 5:
-        r = 5
-    for i in range(r):
-        fig.add_annotation(
-            x=df["T"][i] + (xlim[1] - xlim[0])/12,  # x-coordinate of the annotation
-            y=df["p-corrected"].apply(lambda x: -np.log(x))[
-                i
-            ],  # y-coordinate of the annotation
-            text=df.index[i],  # text to be displayed
-            showarrow=False,  # don't display an arrow pointing to the annotation
-            font=dict(size=10, color="#ef553b"),  # font size of the text
-        )
+    # Custom hovertemplate: metabolite&name: <metabolite name>
+    fig.update_traces(hovertemplate="metabolite&name: %{customdata[0]}<extra></extra>")
 
+    xlim = [df[t_col].min(), df[t_col].max()]
+    x_padding = abs(xlim[1] - xlim[0]) / 5 if xlim[1] != xlim[0] else 1
+    fig.update_layout(xaxis=dict(range=[xlim[0] - x_padding, xlim[1] + x_padding]))
+
+    # Defensive: Only set title if df has at least one row
+    if len(df) > 0:
+        title_text = f"t-test - FEATURE SIGNIFICANCE - {str(df.iloc[0, 10]).upper()}: {df.iloc[0, 11]} - {df.iloc[0, 12]}"
+    else:
+        title_text = "t-test - FEATURE SIGNIFICANCE"
     fig.update_layout(
         font={"color": "grey", "size": 12, "family": "Sans"},
         title={
-            "text": f"t-test - FEATURE SIGNIFICANCE - {df.iloc[0, 10].upper()}: {df.iloc[0, 11]} - {df.iloc[0, 12]}",
+            "text": title_text,
             "font_color": "#3E3D53",
         },
         xaxis_title="T",
         yaxis_title="-Log(p)",
-        showlegend=False,
+        showlegend=True,  # Enable legend
+        legend_title_text="Significance",
     )
     return fig
 
@@ -125,7 +154,21 @@ def ttest_boxplot(df_ttest, metabolite):
         width=350,
         height=400,
         points="all",
+        custom_data=["option", metabolite],
     )
+
+    # Set custom hovertemplate
+    attribute = st.session_state.ttest_attribute if hasattr(st.session_state, "ttest_attribute") else "Attribute"
+    hovertemplate = (
+        f"attribute: {attribute}<br>"
+        "option: %{customdata[0]}<br>"
+        f"metabolite&name: {metabolite}<br>"
+        "intensity: %{customdata[1]:.3g}<extra></extra>"
+    )
+    fig.update_traces(hovertemplate=hovertemplate)
+    # Determine significance label
+    is_significant = df_ttest.loc[metabolite, "significance"] if "significance" in df_ttest.columns else False
+    sig_label = "Significant Metabolite:" if is_significant else "Insignificant Metabolite:"
     fig.update_layout(
         showlegend=False,
         xaxis_title=st.session_state.ttest_attribute.replace("st.session_state.ttest_attribute_", ""),
@@ -133,7 +176,7 @@ def ttest_boxplot(df_ttest, metabolite):
         template="plotly_white",
         font={"color": "grey", "size": 12, "family": "Sans"},
         title={
-            "text": metabolite,
+            "text": f"{sig_label} {metabolite}",
             "font_color": "#3E3D53",
         },
     )

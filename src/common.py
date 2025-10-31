@@ -6,6 +6,10 @@ import base64
 
 dataframe_names = ("md",
                    "data",
+                   "ft",
+                   "an",
+                   "nw",
+                   "ft_with_annotations",
                    "df_anova",
                    "df_tukey",
                    "df_ttest",
@@ -15,6 +19,8 @@ dataframe_names = ("md",
                    "df_oob",
                    "ft_gnps",
                    "md_gnps",
+                   "an_gnps",
+                   "nw_gnps",
                    "df_gnps_annotations")
 
 corrections_map = {"no correction": "none",

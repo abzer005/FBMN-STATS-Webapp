@@ -1,6 +1,13 @@
 import streamlit as st
+
 from src.common import *
 from src.randomforest import *
+def clear_rf_outputs():
+    for key in [
+        'df_oob', 'df_important_features', 'log', 'class_report', 'label_mapping',
+        'test_confusion_df', 'train_confusion_df', 'test_accuracy', 'train_accuracy']:
+        if key in st.session_state:
+            del st.session_state[key]
 
 page_setup()
 
@@ -12,23 +19,76 @@ with st.expander("📖 About"):
     )
     st.image("assets/figures/random-forest.png")
 
-use_random_seed = st.checkbox('Use a fixed random seed for reproducibility', True)
 
-if not st.session_state.data.empty:
+
+if st.session_state.data is not None and not st.session_state.data.empty:
+    # Preserve original data and metadata
+    if 'data_full' not in st.session_state:
+        st.session_state['data_full'] = st.session_state.data.copy()
+    if 'md_full' not in st.session_state:
+        st.session_state['md_full'] = st.session_state.md.copy()
+
+
+    use_random_seed = st.checkbox(
+        'Use a fixed random seed for reproducibility',
+        True,
+        key='use_random_seed',
+        on_change=clear_rf_outputs
+    )
     c1, c2 = st.columns(2)
     c1.selectbox(
         "attribute for supervised learning feature classification",
-        options=[c for c in st.session_state.md.columns if len(set(st.session_state.md[c])) > 1],
+        options=[c for c in st.session_state.md_full.columns if len(set(st.session_state.md_full[c])) > 1],
         key="rf_attribute",
+        on_change=clear_rf_outputs
     )
-    c2.number_input("number of trees", 1, 500, 100, 50,
-                    key = "rf_n_trees",
-                    help="number of trees for random forest, check the OOB error plot and select a number of trees where the error rate is low and flat")
+
+    # Always use the full metadata for category options
+    if st.session_state.rf_attribute is not None and st.session_state.rf_attribute in st.session_state.md_full.columns:
+        rf_categories_options = sorted(set(st.session_state.md_full[st.session_state.rf_attribute].dropna()))
+    else:
+        rf_categories_options = []
+
+
+    c2.multiselect(
+        "select at least 2 categories to include (optional)",
+        options=rf_categories_options,
+        default=rf_categories_options,
+        key="rf_categories",
+        help="If you want to include only specific categories for classification, select them here. Otherwise, all categories will be used.",
+        on_change=clear_rf_outputs
+    )
+
+    # Disable the button if less than two categories are selected
+    selected_categories = st.session_state.get("rf_categories", [])
+    button_disabled = len(selected_categories) < 2
+
+
+    c1.number_input(
+        "number of trees", 1, 500, 100, 50,
+        key = "rf_n_trees",
+        help="number of trees for random forest, check the OOB error plot and select a number of trees where the error rate is low and flat",
+        on_change=clear_rf_outputs
+    )
     
     random_seed = 123 if use_random_seed else None
 
-    if c2.button("Run supervised learning", type="primary"):
+    if c2.button("Run supervised learning", type="primary", disabled=button_disabled):
         try:
+            # Filter data and metadata to only include selected categories, but do NOT overwrite originals
+            selected_categories = st.session_state.rf_categories
+            if selected_categories:
+                mask = st.session_state.md_full[st.session_state.rf_attribute].isin(selected_categories)
+                data_filtered = st.session_state.data_full[mask]
+                md_filtered = st.session_state.md_full[mask]
+            else:
+                data_filtered = st.session_state.data_full.copy()
+                md_filtered = st.session_state.md_full.copy()
+
+            # Temporarily set filtered data for model
+            st.session_state.data = data_filtered
+            st.session_state.md = md_filtered
+
             df_oob, df_important_features, log, class_report, label_mapping, test_confusion_df, train_confusion_df, test_accuracy, train_accuracy = run_random_forest(st.session_state.rf_attribute, st.session_state.rf_n_trees, random_seed)
             st.session_state['df_oob'] = df_oob
             st.session_state['df_important_features'] = df_important_features
@@ -39,10 +99,16 @@ if not st.session_state.data.empty:
             st.session_state['train_confusion_df'] = train_confusion_df
             st.session_state['test_accuracy'] = test_accuracy
             st.session_state['train_accuracy'] = train_accuracy
+
+            # Restore full data/metadata after model run
+            st.session_state.data = st.session_state.data_full.copy()
+            st.session_state.md = st.session_state.md_full.copy()
         except Exception as e:
             st.error(f"Failed to run model due to: {str(e)}")
+else:
+    st.warning("⚠️ Please complete data preparation step first!")
 
-if 'df_important_features' in st.session_state and not st.session_state.df_important_features.empty:
+if ('df_important_features' in st.session_state and st.session_state.df_important_features is not None and not st.session_state.df_important_features.empty):
     tabs = st.tabs(["📈 Analyze optimum number of trees", 
                     "📁 Feature ranked by importance", 
                     "📋 Classification Report",
@@ -51,7 +117,24 @@ if 'df_important_features' in st.session_state and not st.session_state.df_impor
         fig = get_oob_fig(st.session_state.df_oob)
         show_fig(fig, "oob-error")
     with tabs[1]:
-        show_table(st.session_state.df_important_features)
+        df_imp = st.session_state.df_important_features.copy()
+        def sci_notation_or_plain(x):
+            try:
+                if pd.isnull(x):
+                    return x
+                if float(x) == 0:
+                    return 0
+                return f"{x:.2e}"
+            except Exception:
+                return x
+        style_dict = {}
+        if "importance" in df_imp.columns:
+            style_dict["importance"] = sci_notation_or_plain
+        if style_dict:
+            styled = df_imp.style.format(style_dict)
+            st.dataframe(styled, use_container_width=True)
+        else:
+            st.dataframe(df_imp, use_container_width=True)
     with tabs[2]:  # Classification Report
         if 'log' in st.session_state:
             st.subheader("Log Messages")

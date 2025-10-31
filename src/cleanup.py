@@ -76,7 +76,10 @@ def inside_levels(df):
 @st.cache_data
 def get_cutoff_LOD(df):
     # get the minimal value that is not zero (lowest measured intensity)
-    return round(df.replace(0, np.nan).min(numeric_only=True).min())
+    min_val = df.replace(0, np.nan).min(numeric_only=True).min()
+    if pd.isna(min_val):
+        return None  # or you can return 0 or another default value if preferred
+    return round(min_val)
 
 
 @st.cache_data

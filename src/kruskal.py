@@ -7,13 +7,15 @@ import plotly.graph_objects as go
 from scipy.stats import kruskal
 import scikit_posthocs as sp
 
-def gen_kruskal_data(group_data):
-    for col in group_data[0].columns:
+def gen_kruskal_data(group_data, _progress_callback=None):
+    total = len(group_data[0].columns)
+    for idx, col in enumerate(group_data[0].columns):
         try:
             statistic, p = kruskal(*[df[col] for df in group_data])
+            if _progress_callback is not None:
+                _progress_callback(idx + 1, total, max(0, total - (idx + 1)))
             yield col, p, statistic
         except ValueError:
-            # Skip metabolites with identical values"
             continue
 
 def add_p_correction_to_kruskal(df, correction):
@@ -28,20 +30,15 @@ def add_p_correction_to_kruskal(df, correction):
     df.sort_values("p", inplace=True)
     return df
 
-@st.cache_data(show_spinner="Running Kruskal Wallis test...")
-def kruskal_wallis(df, attribute, correction, elements):
-
+def kruskal_wallis(df, attribute, correction, elements, _progress_callback=None):
     combined = pd.concat([df, st.session_state.md], axis=1)
-
     if elements is not None:
         combined = combined[combined[attribute].isin(elements)]
-
     groups = combined[attribute].unique()
     group_data = [combined[combined[attribute] == group] for group in groups]
-
     df = pd.DataFrame(
         np.fromiter(
-            gen_kruskal_data(group_data),
+            gen_kruskal_data(group_data, _progress_callback=_progress_callback),
             dtype=[("metabolite", "U100"), ("p", "f"), ("statistic", "f")],
         )
     )
@@ -65,6 +62,7 @@ def _get_feature_name_map():
 @st.cache_resource
 def get_kruskal_plot(kruskal):
 
+    # Calculate summary stats as in ANOVA
     total_points = len(kruskal)
     n_significant = int(kruskal["significant"].sum())
     n_insignificant = total_points - n_significant
@@ -175,11 +173,13 @@ def get_metabolite_boxplot(kruskal, metabolite):
     return fig
 
 
-def gen_pairwise_dunn(group_data):
+def gen_pairwise_dunn(group_data, _progress_callback=None):
     """Yield results for pairwise dunn test for all metabolites between two options within the attribute."""
-    for col in group_data[0].columns:
-        # posthoc_dunn returns a 2x2 matrix with p values, need one with from the comparison
+    total = len(group_data[0].columns)
+    for idx, col in enumerate(group_data[0].columns):
         p = sp.posthoc_dunn([df[col] for df in group_data]).iloc[0, 1]
+        if _progress_callback is not None:
+            _progress_callback(idx + 1, total, max(0, total - (idx + 1)))
         yield (col, p)
 
 
@@ -196,9 +196,7 @@ def add_p_value_correction_to_dunns(dunn, correction):
         dunn.sort_values("p", inplace=True)
     return dunn
 
-
-@st.cache_data(show_spinner="Running Dunn's test...")
-def dunn(df, attribute, elements, correction):
+def dunn(df, attribute, elements, correction, _progress_callback=None):
     significant_metabolites = df[df["significant"]]["metabolite"]
     # Only keep metabolites that are columns in the data
     valid_metabolites = [m for m in significant_metabolites if m in st.session_state.data.columns]
@@ -217,7 +215,7 @@ def dunn(df, attribute, elements, correction):
 
     dunn = pd.DataFrame(
         np.fromiter(
-            gen_pairwise_dunn([data[data[attribute] == element].drop(columns=[attribute]) for element in elements]),
+            gen_pairwise_dunn([data[data[attribute] == element].drop(columns=[attribute]) for element in elements], _progress_callback=_progress_callback),
             dtype=[
                 ("stats_metabolite", "U100"),
                 ("p", "f")
@@ -300,9 +298,14 @@ def get_dunn_teststat_plot(df):
         yaxis_title="-log(p)",
         template="plotly_white",
         legend=dict(
+            title="Legend",
             itemsizing='trace',
             font=dict(size=12),
-            orientation="v"
+            orientation="v",
+            x=1.02,
+            y=1,
+            xanchor="left",
+            yanchor="top"
         ),
         width=600,
         height=600,
@@ -349,6 +352,7 @@ def get_dunn_volcano_plot(df):
                 name="insignificant",
                 hovertext=make_hovertext(ins[met_col]),
                 hoverinfo="text",
+                showlegend=True,
             )
         )
 
@@ -370,6 +374,7 @@ def get_dunn_volcano_plot(df):
                     name=f"Significant: {st.session_state.dunn_elements[0]} > {st.session_state.dunn_elements[1]}",
                     hovertext=make_hovertext(sig_A[met_col]),
                     hoverinfo="text",
+                    showlegend=True,
                 )
             )
         # Group B red
@@ -388,6 +393,7 @@ def get_dunn_volcano_plot(df):
                     name=f"Significant: {st.session_state.dunn_elements[1]} > {st.session_state.dunn_elements[0]}",
                     hovertext=make_hovertext(sig_B[met_col]),
                     hoverinfo="text",
+                    showlegend=True,
                 )
             )
 

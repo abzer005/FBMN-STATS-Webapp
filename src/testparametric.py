@@ -5,7 +5,7 @@ import scipy.stats as stats
 import pingouin as pg
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Testing for equal variance...")
 def test_equal_variance(attribute, between, correction):
     # test for equal variance
     data = pd.concat([st.session_state.data, st.session_state.md], axis=1)
@@ -43,7 +43,7 @@ def test_equal_variance(attribute, between, correction):
     return fig
 
 
-@st.cache_data
+@st.cache_data(show_spinner="Testing for normal distribution...")
 def test_normal_distribution(attribute, between, correction):
     # test for normal distribution
     data = pd.concat([st.session_state.data, st.session_state.md], axis=1)

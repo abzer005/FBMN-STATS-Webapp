@@ -117,7 +117,24 @@ if ('df_important_features' in st.session_state and st.session_state.df_importan
         fig = get_oob_fig(st.session_state.df_oob)
         show_fig(fig, "oob-error")
     with tabs[1]:
-        show_table(st.session_state.df_important_features)
+        df_imp = st.session_state.df_important_features.copy()
+        def sci_notation_or_plain(x):
+            try:
+                if pd.isnull(x):
+                    return x
+                if float(x) == 0:
+                    return 0
+                return f"{x:.2e}"
+            except Exception:
+                return x
+        style_dict = {}
+        if "importance" in df_imp.columns:
+            style_dict["importance"] = sci_notation_or_plain
+        if style_dict:
+            styled = df_imp.style.format(style_dict)
+            st.dataframe(styled, use_container_width=True)
+        else:
+            st.dataframe(df_imp, use_container_width=True)
     with tabs[2]:  # Classification Report
         if 'log' in st.session_state:
             st.subheader("Log Messages")

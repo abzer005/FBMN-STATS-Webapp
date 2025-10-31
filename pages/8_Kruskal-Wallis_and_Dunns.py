@@ -39,7 +39,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
         options=attribute_options,
         default=attribute_options,
         key="kruskal_groups",
-        help="For comparing 2 groups, use the t-test page instead",
+        help="For comparing 2 groups, use the t-test page instead.  If button is disabled, select a different attribute.",
     )
 
     if prev_kruskal_groups is not None and set(kruskal_groups) != set(prev_kruskal_groups):

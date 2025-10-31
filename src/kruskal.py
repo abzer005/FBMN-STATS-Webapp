@@ -62,6 +62,7 @@ def _get_feature_name_map():
 @st.cache_resource
 def get_kruskal_plot(kruskal):
 
+    # Calculate summary stats as in ANOVA
     total_points = len(kruskal)
     n_significant = int(kruskal["significant"].sum())
     n_insignificant = total_points - n_significant

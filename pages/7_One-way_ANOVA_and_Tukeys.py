@@ -27,12 +27,13 @@ if st.session_state.data is not None and not st.session_state.data.empty:
     if prev_anova_attribute is not None and anova_attribute != prev_anova_attribute:
         st.session_state.df_anova = pd.DataFrame()
         st.session_state.df_tukey = pd.DataFrame()
+
     st.session_state["_prev_anova_attribute"] = anova_attribute
 
     attribute = st.session_state.anova_attribute
     # Check if attribute is valid before accessing DataFrame
     if attribute is None or attribute not in st.session_state.md.columns:
-        st.warning("Please select a valid attribute for ANOVA.")
+        st.warning("Please select a valid attribute for ANOVA. The attribute must be a column from your metadata file that contains at least two unique, non-missing group values. If you do not see your desired attribute, please check your metadata for missing or identical values.")
         st.stop()
 
     attribute_options = list(set(st.session_state.md[attribute].dropna()))
@@ -44,8 +45,9 @@ if st.session_state.data is not None and not st.session_state.data.empty:
         options=attribute_options,
         default=attribute_options,
         key="anova_groups",
-        help="For comparing 2 groups, use the t-test page instead",
+        help="For comparing 2 groups, use the t-test page instead. If button is disabled, select a different attribute.",
     )
+    
 
     if prev_anova_groups is not None and set(anova_groups) != set(prev_anova_groups):
         st.session_state.df_anova = pd.DataFrame()

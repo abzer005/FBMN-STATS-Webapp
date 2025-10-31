@@ -4,15 +4,19 @@ import pingouin as pg
 import plotly.express as px
 import numpy as np
 
-
 @st.cache_data(show_spinner="Calculating t-test results...")
-def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correction, p_correction):
+def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correction, p_correction, _progress_callback=None):
     df = pd.concat([st.session_state.data, st.session_state.md], axis=1)
     ttest = []
-    for col in st.session_state.data.columns:
+    columns = list(st.session_state.data.columns)
+    total = len(columns)
+    start_time = None
+    for idx, col in enumerate(columns):
+        if idx == 0:
+            import time
+            start_time = time.time()
         group1 = df[col][df[ttest_attribute] == target_groups[0]]
         group2 = df[col][df[ttest_attribute] == target_groups[1]]
-        
         # Determine which t-test to use
         use_welch = False
         if correction == "auto":
@@ -43,6 +47,12 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
             result["ttest_type"] = "Student"
         result["metabolite"] = col
         ttest.append(result)
+        # Progress callback with estimated time left
+        if _progress_callback is not None:
+            elapsed = time.time() - start_time if start_time else 0
+            done = idx + 1
+            est_left = (elapsed / done) * (total - done) if done > 0 else 0
+            _progress_callback(done, total, est_left)
 
     ttest = pd.concat(ttest).set_index("metabolite")
     ttest = ttest.dropna()

@@ -67,7 +67,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
         "T-test type",
         options=list(correction_options.keys()),
         key="ttest_correction_label",
-        help="Choose 'Welch's' to correct for unequal variances, 'Student's' for equal variances, or 'auto' to select automatically.",
+        help="Choose Welch's (recommended) to use a version of the test that does not assume equal variances between groups. Choose Student's if you are confident that the group variances are equal. Choose Auto to use Welch's if the group sizes are unequal, or Student's if they are equal.",
         on_change=clear_ttest_data
     )
     c3.selectbox(
@@ -78,7 +78,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
         on_change=clear_ttest_data
     )
 
-    if c2.button("Run t-test", type="primary", disabled=(len(st.session_state.ttest_options) != 2)):
+    if c1.button("Run t-test", type="primary", disabled=(len(st.session_state.ttest_options) != 2)):
         # Map label to value for correction
         correction_value = correction_options[st.session_state.ttest_correction_label]
         st.session_state.df_ttest = gen_ttest_data(

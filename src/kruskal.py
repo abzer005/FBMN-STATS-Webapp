@@ -64,6 +64,8 @@ def _get_feature_name_map():
 @st.cache_resource
 def get_kruskal_plot(kruskal):
 
+
+    # Only count unique, valid metabolite names (not NaN, not attribute name)
     kruskal_clean = kruskal[kruskal["metabolite"].notna()].copy()
     if "kruskal_attribute" in st.session_state:
         kr_attr = st.session_state.kruskal_attribute
@@ -74,8 +76,9 @@ def get_kruskal_plot(kruskal):
     else:
         kruskal_clean["significant"] = False
 
-    total_points = len(kruskal_clean)
-    n_significant = int(kruskal_clean["significant"].sum())
+    unique_metabolites = kruskal_clean["metabolite"].unique()
+    total_points = len(unique_metabolites)
+    n_significant = int(kruskal_clean[kruskal_clean["significant"]]["metabolite"].nunique())
     n_insignificant = total_points - n_significant
 
     st.write(f"Significant: {n_significant}")
@@ -229,10 +232,10 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
         axis=1,
     )
     data = data[data[attribute].isin(elements)]
-    # Calculate means for each group
+    # Calculate medians for each group
     groupA, groupB = elements[0], elements[1]
-    meanA = data[data[attribute] == groupA][valid_metabolites].mean()
-    meanB = data[data[attribute] == groupB][valid_metabolites].mean()
+    medianA = data[data[attribute] == groupA][valid_metabolites].median()
+    medianB = data[data[attribute] == groupB][valid_metabolites].median()
 
     dunn = pd.DataFrame(
         np.fromiter(
@@ -245,24 +248,24 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
     )
     dunn = dunn.dropna()
     dunn = add_p_value_correction_to_dunns(dunn, correction)
-    # Add mean(A) and mean(B) columns for volcano plot
-    dunn["mean(A)"] = dunn["stats_metabolite"].map(meanA)
-    dunn["mean(B)"] = dunn["stats_metabolite"].map(meanB)
-    dunn["diff"] = dunn["mean(B)"] - dunn["mean(A)"]
-    
+    # Add median(A) and median(B) columns for volcano plot
+    dunn["median(A)"] = dunn["stats_metabolite"].map(medianA)
+    dunn["median(B)"] = dunn["stats_metabolite"].map(medianB)
+    dunn["diff"] = dunn["median(B)"] - dunn["median(A)"]
+
     # Store the original numeric DataFrame before formatting
     dunn_original = dunn.copy()
-    
+
     # Create display version with formatted p-values
     dunn_display = dunn.copy()
     if "p" in dunn_display.columns:
         dunn_display["p"] = dunn_display["p"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
     if "p-corrected" in dunn_display.columns:
         dunn_display["p-corrected"] = dunn_display["p-corrected"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
-    
+
     # Attach the original numeric DataFrame as an attribute
     dunn_display._original = dunn_original
-    
+
     return dunn_display
 
 def _get_dunn_feature_map(df_dunn):
@@ -359,13 +362,13 @@ def get_dunn_volcano_plot(df):
     
     # Use original DataFrame if available (contains numeric values)
     df_numeric = getattr(df, '_original', df).copy()
-    
-    # compute log2 fold change (B relative to A). avoiding zeros by using a small epsilon
+
+    # compute log2 fold change (B relative to A) using medians, avoiding zeros by using a small epsilon
     eps = 1e-9
-    meanA = df_numeric["mean(A)"].astype(float) + eps
-    meanB = df_numeric["mean(B)"].astype(float) + eps
-    
-    df_numeric["log2FC"] = np.log2(meanB / meanA)
+    medianA = df_numeric["median(A)"].astype(float) + eps
+    medianB = df_numeric["median(B)"].astype(float) + eps
+
+    df_numeric["log2FC"] = np.log2(medianB / medianA)
     df_numeric["neglog10p"] = -np.log10(df_numeric["p"].astype(float) + eps)
 
     fig = go.Figure()
@@ -397,7 +400,7 @@ def get_dunn_volcano_plot(df):
 
     sig = df_numeric[df_numeric[sig_col] == True]
     if not sig.empty:
-        # Group A blue (higher in A, so negative log2FC)
+        # Group A blue (log2FC < 0)
         sig_A = sig[sig["log2FC"] < 0]
         if not sig_A.empty:
             fig.add_trace(
@@ -405,17 +408,16 @@ def get_dunn_volcano_plot(df):
                     x=sig_A["log2FC"],
                     y=sig_A["neglog10p"],
                     mode="markers+text",
-                    marker=dict(color="#1f77b4"), 
+                    marker=dict(color="#1f77b4"),
                     text=["" for _ in sig_A[met_col]],
                     textposition="top right",
                     textfont=dict(color="#1f77b4", size=12),
                     name=f"Significant: {st.session_state.dunn_elements[0]} > {st.session_state.dunn_elements[1]}",
                     hovertext=make_hovertext(sig_A[met_col]),
                     hoverinfo="text",
-                    showlegend=True,
                 )
             )
-        # Group B red (higher in B, so positive log2FC)
+        # Group B red (log2FC > 0)
         sig_B = sig[sig["log2FC"] > 0]
         if not sig_B.empty:
             fig.add_trace(
@@ -423,14 +425,13 @@ def get_dunn_volcano_plot(df):
                     x=sig_B["log2FC"],
                     y=sig_B["neglog10p"],
                     mode="markers+text",
-                    marker=dict(color="#ef553b"),  #red
+                    marker=dict(color="#ef553b"),
                     text=["" for _ in sig_B[met_col]],
                     textposition="top right",
                     textfont=dict(color="#ef553b", size=12),
                     name=f"Significant: {st.session_state.dunn_elements[1]} > {st.session_state.dunn_elements[0]}",
                     hovertext=make_hovertext(sig_B[met_col]),
                     hoverinfo="text",
-                    showlegend=True,
                 )
             )
 

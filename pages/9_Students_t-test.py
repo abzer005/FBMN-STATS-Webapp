@@ -81,24 +81,42 @@ if st.session_state.data is not None and not st.session_state.data.empty:
     if c1.button("Run t-test", type="primary", disabled=(len(st.session_state.ttest_options) != 2)):
         # Map label to value for correction
         correction_value = correction_options[st.session_state.ttest_correction_label]
+        
+        # Add progress bar
+        progress_placeholder = st.empty()
+        time_placeholder = st.empty()
+        
+        def progress_callback(done, total, est_left):
+            progress = done / total
+            progress_placeholder.progress(progress, text=f"Running t-test: {done}/{total}")
+            time_placeholder.info(f"Estimated time left: {int(est_left)} seconds")
+
         st.session_state.df_ttest = gen_ttest_data(
             st.session_state.ttest_attribute,
             st.session_state.ttest_options,
             st.session_state.ttest_paired,
             st.session_state.ttest_alternative,
             correction_value,
-            corrections_map[st.session_state.p_value_correction]
+            corrections_map[st.session_state.p_value_correction],
+            _progress_callback=progress_callback
         )
+        
+        progress_placeholder.empty()
+        time_placeholder.empty()
         st.rerun()
 
     # Only show tabs if t-test results exist (button pressed and results generated)
     ttest_stat_cols = {"T", "T-val", "t", "tval"}
     df = st.session_state.df_ttest
     if df is not None and not df.empty and any(col in df.columns for col in ttest_stat_cols):
-        tabs = st.tabs(["📈 Feature significance", "📊 Single metabolite plots", "📁 Data"])
+        # Added Volcano plot tab
+
+        tabs = st.tabs(["📈 Feature significance", "📊 Single metabolite plots", "📈 Volcano plot", "📁 Data"])
+
         with tabs[0]:
             fig = plot_ttest(df)
             show_fig(fig, "t-test")
+
         with tabs[1]:
             metabolite_options = list(df.index)
             def metabolite_label(m):
@@ -111,7 +129,16 @@ if st.session_state.data is not None and not st.session_state.data.empty:
                     show_fig(fig, f"ttest-boxplot-{st.session_state.ttest_metabolite}", container_width=True)
             else:
                 st.warning(f"Selected metabolite not found in data columns. Please select a valid metabolite.")
+
         with tabs[2]:
+            # Volcano Plot tab (now third)
+            if "mean(A)" in df.columns and "mean(B)" in df.columns:
+                fig_volcano = get_ttest_volcano_plot(df)
+                show_fig(fig_volcano, "ttest-volcano")
+            else:
+                st.warning("Could not generate volcano plot. Mean values are missing from t-test results. Please re-run the t-test.")
+
+        with tabs[3]:
             # Format p-val and p-corrected columns in scientific notation, but allow full value on cell click
             df_display = df.copy()
             def sci_notation_or_plain(x):
@@ -135,8 +162,3 @@ if st.session_state.data is not None and not st.session_state.data.empty:
 
 else:
     st.warning("⚠️ Please complete data preparation step first!")
-
-
-
-
-

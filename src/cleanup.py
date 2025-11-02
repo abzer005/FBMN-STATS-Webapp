@@ -62,15 +62,29 @@ def check_columns(md, ft):
 
 
 @st.cache_data
+# def inside_levels(df):
+#     df = pd.DataFrame(
+#         {
+#             "ATTRIBUTES": df.columns,
+#             "LEVELS": [set(df[col].dropna().astype(str).to_list()) for col in df],
+#             "COUNTS": [df[col].value_counts().to_list() for col in df],
+#         }
+#     )
+#     return df
+
 def inside_levels(df):
-    df = pd.DataFrame(
-        {
-            "ATTRIBUTES": df.columns,
-            "LEVELS": [set(df[col].dropna().astype(str).to_list()) for col in df],
-            "COUNTS": [df[col].value_counts().to_list() for col in df],
-        }
-    )
-    return df
+    out = []
+    for col in df.columns:
+        vc = df[col].dropna().astype(str).value_counts()
+        out.append(
+            {
+                "ATTRIBUTES": col,
+                "LEVELS": list(vc.index), 
+                "COUNTS": list(vc.values),     
+            }
+        )
+    return pd.DataFrame(out)
+
 
 
 @st.cache_data

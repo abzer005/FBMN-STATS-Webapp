@@ -259,20 +259,31 @@ def get_metabolite_boxplot(anova, metabolite):
     return fig
 
 def gen_pairwise_tukey(df, _metabolites, attribute, _progress_callback=None):
-    """Return a list of results for pairwise Tukey test for all metabolites between two options within the attribute."""
+    """Return a list of results for pairwise Tukey test for all metabolites between two options 
+    within the attribute."""
+    
     import time
     results = []
     total = len(_metabolites)
     start_time = time.time()
+
     for idx, metabolite in enumerate(_metabolites):
-        tukey = pg.pairwise_tukey(df, dv=metabolite, between=attribute)
+        try:
+            tukey = pg.pairwise_tukey(df, dv=metabolite, between=attribute)
+        except Exception as e:
+            continue
+
+        if tukey.empty:
+            continue
+
         if _progress_callback is not None:
             elapsed = time.time() - start_time
             avg_time = elapsed / (idx + 1)
             est_total = avg_time * total
             est_left = max(0, est_total - elapsed)
             _progress_callback(idx + 1, total, est_left)
-        results.append((
+        results.append(
+            (
             metabolite,
             tukey.loc[0, "diff"],
             tukey.loc[0, "p-tukey"],
@@ -281,61 +292,102 @@ def gen_pairwise_tukey(df, _metabolites, attribute, _progress_callback=None):
             tukey.loc[0, "B"],
             tukey.loc[0, "mean(A)"],
             tukey.loc[0, "mean(B)"],
-        ))
-    return results
-
-def add_p_value_correction_to_tukeys(tukey, correction):
-    if "p-corrected" not in tukey.columns:
-        tukey.insert(
-            3, "p-corrected", pg.multicomp(
-                tukey["stats_p"].astype(float), method=correction)[1]
+            )
         )
-        tukey.insert(4, "stats_significant", tukey["p-corrected"] < 0.05)
-        tukey.sort_values("stats_p", inplace=True)
-    return tukey
+    return results
 
 def tukey(df, attribute, elements, correction, _progress_callback=None):
     """
     Run Tukey's test for all significant metabolites, with progress callback.
     """
-    significant_metabolites = df.index 
+    # run Tukey ONLY on anova significant features
+    st.session_state.anova_total = len(df)
+
+    if "significant" in df.columns:
+        df = df[df["significant"] == True]
+    
+    # metabolites we actually have in the data matrix
+    if "metabolite" in df.columns:
+        anova_mets = df["metabolite"].astype(str).tolist()
+    else:
+        # fallback: some ANOVA functions return feature names as index
+        anova_mets = df.index.astype(str).tolist()
+
+    valid_metabolites = [m for m in anova_mets if m in st.session_state.data.columns]
+
+    if not valid_metabolites:
+        # nothing to run Tukey on
+        return pd.DataFrame()
+
     data = pd.concat(
         [
-            st.session_state.data.loc[:, significant_metabolites],
+            st.session_state.data.loc[:, valid_metabolites],
             st.session_state.md.loc[:, attribute],
         ],
         axis=1,
     )
     data = data[data[attribute].isin(elements)]
+    
     tukey = pd.DataFrame(
         np.array(
-            gen_pairwise_tukey(data, significant_metabolites, attribute, _progress_callback=_progress_callback),
-            dtype=[
-                ("stats_metabolite", "U100"),
-                (f"diff", "f"),
-                ("stats_p", "f"),
-                ("attribute", "U100"),
-                ("A", "U100"),
-                ("B", "U100"),
-                ("mean(A)", "f"),
-                ("mean(B)", "f"),
-            ],
+            gen_pairwise_tukey(
+                data, valid_metabolites, attribute, _progress_callback=_progress_callback
+                ),
+                dtype=[
+                    ("stats_metabolite", "U100"),
+                    (f"diff", "f"),
+                    ("stats_p", "f"),
+                    ("attribute", "U100"),
+                    ("A", "U100"),
+                    ("B", "U100"),
+                    ("mean(A)", "f"),
+                    ("mean(B)", "f"),
+                    ],
         )
     )
+
     tukey = tukey.dropna()
     tukey = add_p_value_correction_to_tukeys(tukey, correction)
-    tukey = tukey.rename(columns={
-        "stats_metabolite": "metabolite",
-        "stats_p": "p",
-        "stats_significant": "significant"
-    })
+
+    tukey = tukey.rename(
+        columns={
+            "stats_metabolite": "metabolite",
+            "stats_p": "p",
+            "stats_significant": "significant"
+        }
+    )
     tukey_display = tukey.copy()
+    st.session_state.tukey_n = len(tukey_display)
+
     if "p" in tukey_display.columns:
-        tukey_display["p"] = tukey_display["p"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
-    cols = [c for c in tukey_display.columns if c != "diff"] + ["diff"] if "diff" in tukey_display.columns else tukey_display.columns
-    tukey_display = tukey_display[cols]
+        tukey_display["p"] = tukey_display["p"].apply(
+            lambda x: f"{x:.2e}" if pd.notnull(x) else x
+        )
+    
+    if "diff" in tukey_display.columns:
+        cols = [c for c in tukey_display.columns if c != "diff"] + ["diff"]
+        tukey_display = tukey_display[cols]
+    
     tukey_display._original = tukey  
     return tukey_display
+
+def add_p_value_correction_to_tukeys(tukey, correction):
+    # ensure numeric
+    tukey["stats_p"] = pd.to_numeric(tukey["stats_p"], errors="coerce")
+
+    if "p-corrected" not in tukey.columns:
+         if correction and correction.lower() != "none":
+            tukey.insert(
+                3, 
+                "p-corrected", 
+                pg.multicomp(tukey["stats_p"].astype(float), method=correction)[1]
+            )
+         else:
+            tukey.insert(3, "p-corrected", tukey["stats_p"])
+
+         tukey.insert(4, "stats_significant", tukey["p-corrected"] < 0.05)
+         tukey.sort_values("stats_p", inplace=True)
+    return tukey
 
 def _get_tukey_feature_map(df_tukey):
     """Look up feature name mapping for stats_metabolite similar to anova."""
@@ -409,12 +461,13 @@ def get_tukey_volcano_plot(df):
     Adds metabolite/feature hover labels.
     """
     feature_map = _get_tukey_feature_map(df)
-    # compute log2 fold change (B relative to A). avoidung zeros by using a small epsilon
+
+    # compute log2 fold change (B relative to A). avoiding zeros by using a small epsilon
     eps = 1e-9
     meanA = df["mean(A)"].astype(float) + eps
     meanB = df["mean(B)"].astype(float) + eps
     df = df.copy()
-    df["log2FC"] = np.log2(meanB / meanA)
+    df["log2FC"] = np.log2(meanB/meanA)
     df["neglog10p"] = -np.log10(df["p"].astype(float) + eps)
 
     fig = go.Figure()
@@ -485,7 +538,7 @@ def get_tukey_volcano_plot(df):
             "text": f"TUKEY - {st.session_state.anova_attribute.upper()}: {st.session_state.tukey_elements[0]} - {st.session_state.tukey_elements[1]} (volcano)",
             "font_color": "#3E3D53",
         },
-        xaxis_title="log2(mean B) - log2(mean A)",
+        xaxis_title="log2(mean B/mean A)",
         yaxis_title="-log10(p)",
         template="plotly_white",
         legend=dict(

@@ -6,11 +6,40 @@ from src.ttest import *
 
 page_setup()
 
-st.markdown("# Student's t-test")
+st.markdown("# T-test")
 
 with st.expander("📖 About"):
-    st.markdown(
-        "The Student's t-test is a statistical test used to determine whether the means of two groups of data are significantly different from each other. The t-test is a parametric test that assumes the data are normally distributed and the variances of the two groups are equal. It is commonly used in hypothesis testing to determine whether there is a significant difference between the means of two populations or to compare the means of two samples. The t-test is a powerful tool in statistical analysis and is often the go-to test for researchers and analysts when analyzing data.")
+    st.markdown("""
+This module compares the means of two groups to assess whether they differ significantly.
+
+##### 🧪 Choosing the right test
+- **Student's t-test** – the classic and most widely used version; assumes both groups have *equal variances* and are *normally distributed*. It's suitable for balanced datasets.  
+- **Welch's t-test** – a more robust variant that does *not* assume equal variances or sample sizes. It's recommended for most real-world biological data.  
+- **Paired t-test** – used when both measurements come from the **same or matched samples** (e.g., before vs. after treatment).  
+- **Auto** – defaults to **Welch's t-test**. You can check the **Parametric Assumptions Evaluation** page to confirm whether equal variances hold in your data.  
+
+##### ⚙️ Alternative hypotheses
+- **Two-sided (default):** tests whether the two means differ in *either direction*.  
+- **Greater:** tests if group A > group B.  
+- **Less:** tests if group A < group B.  
+Most studies use **two-sided** unless there's a strong directional expectation.
+
+##### 📊 Key outputs
+- **T** – test statistic measuring difference magnitude relative to variability.  
+- **p-val** – probability that the observed difference is due to chance (p < 0.05 = significant).  
+- **dof** – degrees of freedom, based on group sizes and test type.  
+- **Cohen's d** – effect size (0.2 = small, 0.5 = medium, 0.8 = large).  
+- **BF10** – Bayes Factor showing evidence for the alternative hypothesis (> 3 = moderate evidence).  
+- **Power** – likelihood of correctly detecting a true difference.  
+- **p-corrected (FDR)** – adjusted p-values accounting for multiple comparisons across all metabolites.  
+- **Significance** – marks whether the adjusted result remains significant (after FDR).  
+- **ttest_type** – identifies which test (Student, Welch, or Paired) was applied.
+
+##### Why apply FDR correction?
+Even though the t-test compares only two groups, each metabolite is tested separately — often hundreds or thousands at once.  
+This creates a *multiple-testing problem*, where some features appear significant by chance.  
+The **False Discovery Rate (FDR)** correction adjusts for this, helping ensure that identified metabolites remain statistically significant after accounting for multiple comparisons.
+    """)
 
 # Ensure st.session_state.df_ttest is initialized
 if "df_ttest" not in st.session_state:
@@ -67,14 +96,15 @@ if st.session_state.data is not None and not st.session_state.data.empty:
         "T-test type",
         options=list(correction_options.keys()),
         key="ttest_correction_label",
-        help="Choose Welch's (recommended) to use a version of the test that does not assume equal variances between groups. Choose Student's if you are confident that the group variances are equal. Choose Auto to use Welch's if the group sizes are unequal, or Student's if they are equal.",
+        help="Welch's (recommended) ignores equal-variance assumption. Use Student's if variances are equal. 'Auto' applies Welch by default; check Levene test for confirmation.",
         on_change=clear_ttest_data
     )
+
     c3.selectbox(
         "alternative",
         options=["two-sided", "greater", "less"],
         key="ttest_alternative",
-        help="Defines the alternative hypothesis, or tail of the test.",
+        help="Choose the test direction: 'two-sided' checks for any difference; 'greater' tests if group A > group B; and 'less' tests if group A < group B.",
         on_change=clear_ttest_data
     )
 
@@ -111,13 +141,22 @@ if st.session_state.data is not None and not st.session_state.data.empty:
     if df is not None and not df.empty and any(col in df.columns for col in ttest_stat_cols):
         # Added Volcano plot tab
 
-        tabs = st.tabs(["📈 Feature significance", "📊 Single metabolite plots", "📈 Volcano plot", "📁 Data"])
+        tabs = st.tabs(["📈 Feature significance", "📈 Volcano plot", "📊 Single metabolite plots", "📁 Data"])
 
         with tabs[0]:
             fig = plot_ttest(df)
             show_fig(fig, "t-test")
 
         with tabs[1]:
+            # Volcano Plot tab 
+            if "mean(A)" in df.columns and "mean(B)" in df.columns:
+                fig_volcano = get_ttest_volcano_plot(df)
+                show_fig(fig_volcano, "ttest-volcano")
+            else:
+                st.warning("Could not generate volcano plot. Mean values are missing from t-test results. Please re-run the t-test.")
+
+
+        with tabs[2]:
             metabolite_options = list(df.index)
             def metabolite_label(m):
                 return m.split("&")[0] if "&" in m else m
@@ -130,13 +169,6 @@ if st.session_state.data is not None and not st.session_state.data.empty:
             else:
                 st.warning(f"Selected metabolite not found in data columns. Please select a valid metabolite.")
 
-        with tabs[2]:
-            # Volcano Plot tab (now third)
-            if "mean(A)" in df.columns and "mean(B)" in df.columns:
-                fig_volcano = get_ttest_volcano_plot(df)
-                show_fig(fig_volcano, "ttest-volcano")
-            else:
-                st.warning("Could not generate volcano plot. Mean values are missing from t-test results. Please re-run the t-test.")
 
         with tabs[3]:
             # Format p-val and p-corrected columns in scientific notation, but allow full value on cell click

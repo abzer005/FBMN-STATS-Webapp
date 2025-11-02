@@ -8,11 +8,20 @@ st.markdown("# Kruskal Wallis & Dunn's post hoc")
 
 with st.expander("📖 About"):
     st.markdown(
-        """The Kruskal-Wallis test helps determine if there are significant differences among multiple groups, and if significant differences exist, Dunn's post hoc test helps pinpoint which specific groups differ from each other. These non-parametric tests are valuable tools for analyzing data when the assumptions of parametric tests are not met or when working with ordinal or skewed data."""
-    )
+        """
+        The **Kruskal–Wallis (KW) test** is a non-parametric alternative to one-way ANOVA.
+        It checks whether there are statistically significant differences **among three or more groups** without assuming normal distribution or equal variances. 
+        If the KW test indicates significant differences among groups, the user can apply Dunn's post-hoc test to directly compare a specific pair of groups to identify where those differences occur.
+         
+        The first figure block displays the **K-statistic** and p-value calculation for all groups, showing whether at least one group differs. 
+        The second block shows the concept of performing **Dunn’s post hoc test** on the significant features from KW, highlighting *which groups* are driving the differences.
+        
+        💡 *Tip:*  Use KW and Dunn’s tests when data are **non-normal**, **heteroscedastic**, or **ordinal**. If your data are normally distributed and have equal variances, use **ANOVA** instead.
+        """
+        )
+    
     st.image("assets/figures/kruskal-wallis.png")
-    st.image("assets/figures/dunn.png")
-
+   
 if st.session_state.data is not None and not st.session_state.data.empty:
     c1, c2 = st.columns(2)
 
@@ -205,12 +214,16 @@ if st.session_state.data is not None and not st.session_state.data.empty:
             show_fig(fig, f"kruskal-{st.session_state.kruskal_metabolite}")
         
         if (hasattr(st.session_state, 'df_dunn') and st.session_state.df_dunn is not None and not st.session_state.df_dunn.empty):
+            
+            dunn_numeric = getattr(st.session_state.df_dunn, "_original", st.session_state.df_dunn)
             with tabs[3]:
-                #st.write("Dunn's test plots are not yet implemented.")
-                fig1 = get_dunn_teststat_plot(getattr(st.session_state.df_dunn, '_original', st.session_state.df_dunn))
+                 # Test-statistic style plot (x = rank_sum_diff, y = -log10(p))
+                fig1 = get_dunn_teststat_plot(dunn_numeric)
                 show_fig(fig1, "dunn-teststat")
-                fig2 = get_dunn_volcano_plot(getattr(st.session_state.df_dunn, '_original', st.session_state.df_dunn))
+                # Volcano plot (x = logFC, y = -log10(p))
+                fig2 = get_dunn_volcano_plot(dunn_numeric)
                 show_fig(fig2, "dunn-volcano")
+            
             with tabs[4]:
                 df_dunn = st.session_state.df_dunn.copy()
                 df_dunn = df_dunn.rename(columns={
@@ -218,13 +231,28 @@ if st.session_state.data is not None and not st.session_state.data.empty:
                     "stats_significant": "significant"
                 })
 
-                attribute_value = st.session_state.kruskal_attribute if "kruskal_attribute" in st.session_state else ""
-                dunn_groups = st.session_state.dunn_elements if "dunn_elements" in st.session_state else ["", ""]
+                attribute_value = (
+                    st.session_state.kruskal_attribute 
+                    if "kruskal_attribute" in st.session_state 
+                    else ""
+                )
+                dunn_groups = ( 
+                    st.session_state.dunn_elements 
+                    if "dunn_elements" in st.session_state 
+                    else ["", ""]
+                )
                 if len(dunn_groups) == 2:
                     A_value, B_value = dunn_groups
                 else:
                     A_value, B_value = "", ""
-                sig_idx = df_dunn.columns.get_loc("significant") + 1 if "significant" in df_dunn.columns else len(df_dunn.columns)
+                
+                # insert meta cols right after "significant"
+                sig_idx = (
+                    df_dunn.columns.get_loc("significant") + 1 
+                    if "significant" in df_dunn.columns 
+                    else len(df_dunn.columns)
+                )
+
                 df_dunn.insert(sig_idx, "attribute", attribute_value)
                 df_dunn.insert(sig_idx + 1, "A", A_value)
                 df_dunn.insert(sig_idx + 2, "B", B_value)
@@ -240,10 +268,18 @@ if st.session_state.data is not None and not st.session_state.data.empty:
                         return f"{x:.2e}"
                     except Exception:
                         return x
+                    
                 style_dict = {}
                 for col in ["p", "p-corrected"]:
                     if col in df_dunn.columns:
                         style_dict[col] = sci_notation_or_plain
+                
+                if "data" in st.session_state and "dunn_n" in st.session_state:
+                    st.caption(
+                        f"ℹ️ Dunn's post-hoc was run on {st.session_state.dunn_n} features "
+                        f"out of {st.session_state.data.shape[1]} KW-tested features."
+                    )
+                    
                 if style_dict:
                     styled = df_dunn.style.format(style_dict)
                     st.dataframe(styled, use_container_width=True, hide_index=True)

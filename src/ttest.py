@@ -3,6 +3,7 @@ import pandas as pd
 import pingouin as pg
 import plotly.express as px
 import plotly.graph_objects as go
+import scipy.stats as stats
 import numpy as np
 import time
 
@@ -22,6 +23,8 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
         # Calculate means for volcano plot
         mean1 = group1.mean()
         mean2 = group2.mean()
+        n1 = len(group1)
+        n2 = len(group2)
 
         # Determine which t-test to use
         # The 'correction' variable is "auto", "True", or "False" (strings)
@@ -30,7 +33,9 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
             correction_param = True
         elif correction == "False":
             correction_param = False
-        
+        elif correction == "auto":
+            correction_param = True        # Default to Welch
+
         # Calculate t-test
         result = pg.ttest(group1, group2, paired, alternative, correction=correction_param)
 
@@ -38,17 +43,12 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
         was_welch = False
         if correction_param == True:
             was_welch = True
-        elif correction_param == 'auto':
-            was_welch = (len(group1) != len(group2))
-        # else: was_welch = False (already set)
 
         # Calculate degrees of freedom
         if was_welch:
             # Welch's df calculation
             s1 = np.var(group1, ddof=1)
             s2 = np.var(group2, ddof=1)
-            n1 = len(group1)
-            n2 = len(group2)
             numerator = (s1/n1 + s2/n2)**2
             denominator = ((s1/n1)**2)/(n1-1) + ((s2/n2)**2)/(n2-1)
             df_welch = numerator / denominator if denominator != 0 else np.nan
@@ -56,8 +56,6 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
             result["ttest_type"] = "Welch"
         else:
             # Student's t-test df
-            n1 = len(group1)
-            n2 = len(group2)
             # For paired test, df is n-1
             if paired:
                 result["df"] = n1 - 1

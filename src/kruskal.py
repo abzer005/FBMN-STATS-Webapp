@@ -35,7 +35,9 @@ def kruskal_wallis(df, attribute, correction, elements, _progress_callback=None)
     if elements is not None:
         combined = combined[combined[attribute].isin(elements)]
     groups = combined[attribute].unique()
-    group_data = [combined[combined[attribute] == group] for group in groups]
+    metabolite_cols = list(st.session_state.data.columns)
+    group_data = [combined[combined[attribute] == group].loc[:, metabolite_cols] for group in groups]
+
     df = pd.DataFrame(
         np.fromiter(
             gen_kruskal_data(group_data, _progress_callback=_progress_callback),
@@ -62,21 +64,44 @@ def _get_feature_name_map():
 @st.cache_resource
 def get_kruskal_plot(kruskal):
 
-    # Calculate summary stats as in ANOVA
-    total_points = len(kruskal)
-    n_significant = int(kruskal["significant"].sum())
+
+    # Only count unique, valid metabolite names (not NaN, not attribute name)
+    kruskal_clean = kruskal[kruskal["metabolite"].notna()].copy()
+    if "kruskal_attribute" in st.session_state:
+        kr_attr = st.session_state.kruskal_attribute
+        kruskal_clean = kruskal_clean[kruskal_clean["metabolite"] != kr_attr]
+
+    if "significant" in kruskal_clean.columns:
+        kruskal_clean["significant"] = kruskal_clean["significant"].fillna(False).astype(bool)
+    else:
+        kruskal_clean["significant"] = False
+
+    unique_metabolites = kruskal_clean["metabolite"].unique()
+    total_points = len(unique_metabolites)
+    n_significant = int(kruskal_clean[kruskal_clean["significant"]]["metabolite"].nunique())
     n_insignificant = total_points - n_significant
+
     st.write(f"Significant: {n_significant}")
     st.write(f"Insignificant: {n_insignificant}")
     st.write(f"Total data points: {total_points}")
-    
-    insig = kruskal[~kruskal["significant"]]
-    sig = kruskal[kruskal["significant"]]
+
+    insig = kruskal_clean[~kruskal_clean["significant"]]
+    sig = kruskal_clean[kruskal_clean["significant"]]
 
     fig = go.Figure()
+    eps = 1e-12
+    def safe_log10_series(s):
+        s = pd.to_numeric(s, errors="coerce")
+        return s.where(s > 0, np.nan).apply(np.log10)
+
+    def safe_neglog10p(pseries):
+        p = pd.to_numeric(pseries, errors="coerce").fillna(1.0)
+        p = p.clip(lower=eps)
+        return -np.log10(p)
+
     fig.add_trace(go.Scatter(
-        x=insig["statistic"].apply(np.log),
-        y=insig["p"].apply(lambda x: -np.log(x)),
+        x=safe_log10_series(insig["statistic"]),
+        y=safe_neglog10p(insig["p"]),
         mode="markers",
         marker=dict(color="#696880"),
         name="insignificant",
@@ -84,10 +109,9 @@ def get_kruskal_plot(kruskal):
         hovertemplate="%{text}",
         showlegend=True
     ))
-    # Plot significant features (red)
     fig.add_trace(go.Scatter(
-        x=sig["statistic"].apply(np.log),
-        y=sig["p"].apply(lambda x: -np.log(x)),
+        x=safe_log10_series(sig["statistic"]),
+        y=safe_neglog10p(sig["p"]),
         mode="markers",
         marker=dict(color="#ef553b"),
         name="significant",
@@ -95,20 +119,20 @@ def get_kruskal_plot(kruskal):
         hovertemplate="%{text}",
         showlegend=True
     ))
+
     fig.update_layout(
         font={"color": "grey", "size": 12, "family": "Sans"},
         title={
             "text": f"Kruskal Wallis - {st.session_state.kruskal_attribute.upper()}",
             "font_color": "#3E3D53"
         },
-        xaxis_title="log(H)",
-        yaxis_title="-log(p)",
+        xaxis_title="log10(H)",
+        yaxis_title="-log10(p)",
         legend=dict(title="Legend"),
         width=600,
         height=600
     )
     return fig
-
 
 @st.cache_resource
 def get_metabolite_boxplot(kruskal, metabolite):
@@ -197,9 +221,9 @@ def add_p_value_correction_to_dunns(dunn, correction):
     return dunn
 
 def dunn(df, attribute, elements, correction, _progress_callback=None):
-    significant_metabolites = df[df["significant"]]["metabolite"]
-    # Only keep metabolites that are columns in the data
-    valid_metabolites = [m for m in significant_metabolites if m in st.session_state.data.columns]
+    # Use all metabolites from KW results, not just significant ones
+    all_metabolites = df["metabolite"]
+    valid_metabolites = [m for m in all_metabolites if m in st.session_state.data.columns]
     data = pd.concat(
         [
             st.session_state.data.loc[:, valid_metabolites],
@@ -208,10 +232,10 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
         axis=1,
     )
     data = data[data[attribute].isin(elements)]
-    # Calculate means for each group
+    # Calculate medians for each group
     groupA, groupB = elements[0], elements[1]
-    meanA = data[data[attribute] == groupA][valid_metabolites].mean()
-    meanB = data[data[attribute] == groupB][valid_metabolites].mean()
+    medianA = data[data[attribute] == groupA][valid_metabolites].median()
+    medianB = data[data[attribute] == groupB][valid_metabolites].median()
 
     dunn = pd.DataFrame(
         np.fromiter(
@@ -224,11 +248,25 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
     )
     dunn = dunn.dropna()
     dunn = add_p_value_correction_to_dunns(dunn, correction)
-    # Add mean(A) and mean(B) columns for volcano plot
-    dunn["mean(A)"] = dunn["stats_metabolite"].map(meanA)
-    dunn["mean(B)"] = dunn["stats_metabolite"].map(meanB)
-    dunn["diff"] = dunn["mean(B)"] - dunn["mean(A)"]
-    return dunn
+    # Add median(A) and median(B) columns for volcano plot
+    dunn["median(A)"] = dunn["stats_metabolite"].map(medianA)
+    dunn["median(B)"] = dunn["stats_metabolite"].map(medianB)
+    dunn["diff"] = dunn["median(B)"] - dunn["median(A)"]
+
+    # Store the original numeric DataFrame before formatting
+    dunn_original = dunn.copy()
+
+    # Create display version with formatted p-values
+    dunn_display = dunn.copy()
+    if "p" in dunn_display.columns:
+        dunn_display["p"] = dunn_display["p"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
+    if "p-corrected" in dunn_display.columns:
+        dunn_display["p-corrected"] = dunn_display["p-corrected"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
+
+    # Attach the original numeric DataFrame as an attribute
+    dunn_display._original = dunn_original
+
+    return dunn_display
 
 def _get_dunn_feature_map(df_dunn):
     """Look up feature name mapping for stats_metabolite similar to kruskal."""
@@ -239,28 +277,31 @@ def get_dunn_teststat_plot(df):
     feature_map = _get_dunn_feature_map(df)
     fig = go.Figure()
 
-    sample_ids = list(st.session_state.data.index) if hasattr(st.session_state.data, 'index') else None
     def make_hovertext(metabolites):
         htext = []
-        for i, m in enumerate(metabolites):
+        for m in metabolites:
             met_name = feature_map[m] if feature_map and m in feature_map else str(m)
-            filename = sample_ids[i % len(sample_ids)] if sample_ids else "N/A"
-            htext.append(f"filename: {filename}<br>metabolite: {met_name}")
+            htext.append(f"metabolite: {met_name}")
         return htext
 
-    p_numeric = getattr(df, '_original', df)["p"] if hasattr(df, '_original') else df["p"]
-    sig_col = "stats_significant" if "stats_significant" in df.columns else "significant"
-    met_col = "stats_metabolite" if "stats_metabolite" in df.columns else "metabolite"
-    diff_col = "diff" if "diff" in df.columns else None
+    # Use original DataFrame if available (contains numeric p-values)
+    df_numeric = getattr(df, '_original', df)
+    
+    sig_col = "stats_significant" if "stats_significant" in df_numeric.columns else "significant"
+    met_col = "stats_metabolite" if "stats_metabolite" in df_numeric.columns else "metabolite"
+    diff_col = "diff" if "diff" in df_numeric.columns else None
+
+    if diff_col is None:
+        st.error("Diff column not found in Dunn's results. Please rerun the analysis.")
+        return fig
 
     # Insignificant points
-    ins = df[df[sig_col] == False]
-    if not ins.empty and diff_col:
-        ins_numeric = p_numeric[ins.index]
+    ins = df_numeric[df_numeric[sig_col] == False]
+    if not ins.empty:
         fig.add_trace(
             go.Scatter(
                 x=ins[diff_col],
-                y=-np.log(ins_numeric.astype(float)),
+                y=-np.log(ins["p"].astype(float)),
                 mode="markers",
                 marker=dict(color="#696880"),
                 name="insignificant",
@@ -270,13 +311,12 @@ def get_dunn_teststat_plot(df):
         )
 
     # Significant points
-    sig = df[df[sig_col] == True]
-    if not sig.empty and diff_col:
-        sig_numeric = p_numeric[sig.index]
+    sig = df_numeric[df_numeric[sig_col] == True]
+    if not sig.empty:
         fig.add_trace(
             go.Scatter(
                 x=sig[diff_col],
-                y=-np.log(sig_numeric.astype(float)),
+                y=-np.log(sig["p"].astype(float)),
                 mode="markers+text",
                 marker=dict(color="#ef553b"),
                 text=["" for _ in sig[met_col]],
@@ -319,29 +359,31 @@ def get_dunn_volcano_plot(df):
     Adds metabolite/feature hover labels.
     """
     feature_map = _get_dunn_feature_map(df)
-    # compute log2 fold change (B relative to A). avoidung zeros by using a small epsilon
+    
+    # Use original DataFrame if available (contains numeric values)
+    df_numeric = getattr(df, '_original', df).copy()
+
+    # compute log2 fold change (B relative to A) using medians, avoiding zeros by using a small epsilon
     eps = 1e-9
-    meanA = df["mean(A)"].astype(float) + eps
-    meanB = df["mean(B)"].astype(float) + eps
-    #dunn["diff"] = dunn["mean(B)"] - dunn["mean(A)"]
-    df = df.copy()
-    df["log2FC"] = np.log2(meanB / meanA)
-    df["neglog10p"] = -np.log10(df["p"].astype(float) + eps)
+    medianA = df_numeric["median(A)"].astype(float) + eps
+    medianB = df_numeric["median(B)"].astype(float) + eps
+
+    df_numeric["log2FC"] = np.log2(medianB / medianA)
+    df_numeric["neglog10p"] = -np.log10(df_numeric["p"].astype(float) + eps)
 
     fig = go.Figure()
 
-    sample_ids = list(st.session_state.data.index) if hasattr(st.session_state.data, 'index') else None
     def make_hovertext(metabolites):
         htext = []
-        for i, m in enumerate(metabolites):
+        for m in metabolites:
             met_name = feature_map[m] if feature_map and m in feature_map else str(m)
-            filename = sample_ids[i % len(sample_ids)] if sample_ids else "N/A"
-            htext.append(f"filename: {filename}<br>metabolite: {met_name}")
+            htext.append(f"metabolite: {met_name}")
         return htext
 
-    sig_col = "stats_significant" if "stats_significant" in df.columns else "significant"
-    met_col = "stats_metabolite" if "stats_metabolite" in df.columns else "metabolite"
-    ins = df[df[sig_col] == False]
+    sig_col = "stats_significant" if "stats_significant" in df_numeric.columns else "significant"
+    met_col = "stats_metabolite" if "stats_metabolite" in df_numeric.columns else "metabolite"
+    
+    ins = df_numeric[df_numeric[sig_col] == False]
     if not ins.empty:
         fig.add_trace(
             go.Scatter(
@@ -356,44 +398,40 @@ def get_dunn_volcano_plot(df):
             )
         )
 
-    sig = df[df[sig_col] == True]
+    sig = df_numeric[df_numeric[sig_col] == True]
     if not sig.empty:
-        # Group A blue
+        # Group A blue (log2FC < 0)
         sig_A = sig[sig["log2FC"] < 0]
-        met_col = "stats_metabolite" if "stats_metabolite" in sig_A.columns else "metabolite"
         if not sig_A.empty:
             fig.add_trace(
                 go.Scatter(
                     x=sig_A["log2FC"],
                     y=sig_A["neglog10p"],
                     mode="markers+text",
-                    marker=dict(color="#1f77b4"), 
+                    marker=dict(color="#1f77b4"),
                     text=["" for _ in sig_A[met_col]],
                     textposition="top right",
                     textfont=dict(color="#1f77b4", size=12),
                     name=f"Significant: {st.session_state.dunn_elements[0]} > {st.session_state.dunn_elements[1]}",
                     hovertext=make_hovertext(sig_A[met_col]),
                     hoverinfo="text",
-                    showlegend=True,
                 )
             )
-        # Group B red
+        # Group B red (log2FC > 0)
         sig_B = sig[sig["log2FC"] > 0]
-        met_col = "stats_metabolite" if "stats_metabolite" in sig_B.columns else "metabolite"
         if not sig_B.empty:
             fig.add_trace(
                 go.Scatter(
                     x=sig_B["log2FC"],
                     y=sig_B["neglog10p"],
                     mode="markers+text",
-                    marker=dict(color="#ef553b"),  #red
+                    marker=dict(color="#ef553b"),
                     text=["" for _ in sig_B[met_col]],
                     textposition="top right",
                     textfont=dict(color="#ef553b", size=12),
                     name=f"Significant: {st.session_state.dunn_elements[1]} > {st.session_state.dunn_elements[0]}",
                     hovertext=make_hovertext(sig_B[met_col]),
                     hoverinfo="text",
-                    showlegend=True,
                 )
             )
 
@@ -420,5 +458,3 @@ def get_dunn_volcano_plot(df):
         height=600,
     )
     return fig
-
-

@@ -7,13 +7,22 @@ A web app implementation of the [statistics notebooks](https://github.com/Functi
 ## Installation
 - [run the app](https://metabolomics-statistics.streamlit.app/) without installation (recommended for smaller datasets)
 
-**local installation:**
-- clone this repository and install packages from requirements file
+### Local Installation
+You can run the Statistics for Metabolomics app in two ways:
 
-`pip install -r requirements.txt`
-- start the app from the terminal
+1. **From source code**
+   - Download or clone this repository.
+   - Open a terminal in the project folder and run:
+     ```bash
+     pip install -r requirements.txt
+     streamlit run Statistics_for_Metabolomics.py
+     ```
+   - The app will open automatically in your browser.
 
-`streamlit run Statistics_for_Metabolomics.py`
+2. **Using the Windows executable (.exe)**
+   - Download the latest `.exe` version from the releases page.
+   - ⚠️ Before installing a new version, **delete all files from any older installation** (for example, from `C:/`).
+   - This helps avoid compatibility or version conflicts so the app runs smoothly.
 
 ## Available Statistics
 - Principal Component Analysis (PCA)

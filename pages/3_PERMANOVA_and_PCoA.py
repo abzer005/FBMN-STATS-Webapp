@@ -12,13 +12,21 @@ try:
     with st.expander("📖 About"):
         st.markdown(
             """
-    PERMANOVA (Permutational Multivariate Analysis of Variance) is a statistical method used to test differences in multivariate data between two or more groups. It is similar to traditional ANOVA but accounts for correlations between variables and allows for the testing of non-parametric data. It works by permuting the data to create a null distribution, which is then used to calculate a p-value for the observed differences between groups.
+            **Principal Coordinate Analysis (PCoA)** is an **unsupervised** ordination technique that visualizes relationships among samples based on a **distance (dissimilarity) matrix**. 
+            Unlike PCA, which relies on Euclidean distance, PCoA can use **different distance metrics** such as Bray–Curtis, Jaccard, or Euclidean, making it suitable for non-normal or compositional data. 
+            The method projects samples into new coordinate axes (PCo1, PCo2, etc.) that explain the greatest variation in distances. 
+            Typically, the **first 10 coordinates** capture most of the variance, and users can select any two among these to visualize group separation.
 
-    Principal Coordinate Analysis (PCoA) is a multivariate technique used to analyze the structure of a distance matrix. PCoA transforms the distance matrix into a set of orthogonal axes that capture the maximum variation in the data. It is a useful tool for visualizing and exploring patterns in multivariate data, particularly in environmental and ecological research.
+            **PERMANOVA (Permutational Multivariate Analysis of Variance)** tests whether the **centroids of groups** differ significantly in multivariate space. 
+            It uses **permutation-based resampling** (usually 999 permutations) to compute:
+            - **Pseudo-F (test statistic):** measures the ratio of between-group to within-group variation  
+            - **R²:** indicates the proportion of total variance explained by the grouping variable (metadata attribute)  
+            - **p-value:** shows whether observed group differences are statistically significant under permutation  
 
-    This [video tutorial](https://www.youtube.com/watch?v=GEn-_dAyYME) by StatQuest summarizes nicely the basic principles of PCoA. 
-    """
-        )
+            In this app, PERMANOVA results help quantify whether the separation observed in PCoA plots is statistically meaningful, rather than just visual. 
+            """
+)
+
         st.image("assets/figures/pcoa.png")
 
 

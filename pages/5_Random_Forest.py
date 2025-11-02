@@ -15,8 +15,19 @@ st.title("Random Forest")
 
 with st.expander("📖 About"):
     st.markdown(
-        """Get the most important features explaining the selected attribute with supervised learning via random forest model."""
-    )
+    """
+    **Random Forest (RF)** is a **supervised learning** method used to identify features that best explain the selected attribute.  
+    This app uses a **simplified RF implementation** — no hyperparameter optimization is applied, and users can only adjust the **number of trees**.
+
+    After training, the app displays several useful outputs:
+    - **Out-of-Bag (OOB) error:** estimates model accuracy on unseen data, helping assess generalization performance  
+    - **Feature importance list:** ranks which metabolites or variables contribute most to group classification  
+    - **Classification report:** summarizes how well each group (class) was predicted through **precision**, **recall**, **F1-score**, and **support** — helping users understand whether the model over- or under-classifies certain groups  
+    - **Confusion matrices:** show correct and incorrect predictions for both **training** and **test** sets, allowing users to visually compare how well the model generalizes  
+
+    ⚙️ *Note: This module uses a simplified RF approach and will be updated with more tuning options and evaluation features soon.*
+    """
+)
     st.image("assets/figures/random-forest.png")
 
 

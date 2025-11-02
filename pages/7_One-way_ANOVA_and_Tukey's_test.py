@@ -8,8 +8,14 @@ st.markdown("# One-way ANOVA & Tukey's")
 
 with st.expander("📖 About"):
     st.markdown(
-        """Analysis of variance (ANOVA) is a statistical method used to compare means between two or more groups. ANOVA tests whether there is a significant difference between the means of different groups based on the variation within and between groups. If ANOVA reveals that there is a significant difference between at least two group means, post hoc tests are used to determine which specific groups differ significantly from one another. Tukey's post hoc test is a widely used statistical method for pairwise comparisons after ANOVA. It accounts for multiple comparisons and adjusts the p-values accordingly, allowing for a more accurate identification of significant group differences."""
-    )
+        """
+        ANOVA (Analysis of Variance) is used to test whether the means of multiple groups differ significantly. 
+        It evaluates variation within and between groups to determine if **at least one group mean is different**.
+        When ANOVA indicates a significant difference, a Tukey’s post-hoc test can be used to compare specific pairs of groups.
+        In this app, users can select any two groups to perform Tukey’s test, which adjusts for multiple comparisons and identifies whether their means differ significantly.
+       """
+       )
+    
     st.image("assets/figures/anova.png")
     st.image("assets/figures/tukeys.png")
 
@@ -87,7 +93,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
     if st.session_state.df_anova is not None and not st.session_state.df_anova.empty:
         tukey_options = list(st.session_state.anova_groups) if "anova_groups" in st.session_state else []
         tukey_options.sort()
-
+    
         prev_tukey_elements = st.session_state.get("_prev_tukeys_options", None)
         tukey_elements = c2.multiselect(
             "select **two** options for Tukey's comparison",
@@ -95,29 +101,33 @@ if st.session_state.data is not None and not st.session_state.data.empty:
             default=tukey_options[:2],
             key="tukeys_options",
             max_selections=2,
-            help="Select two options.",
+            help="Tukey's HSD compares **pairs** of groups. Pick exactly 2.",
         )
 
+        # if user changed groups, clear old results
         if prev_tukey_elements is not None and set(tukey_elements) != set(prev_tukey_elements):
             st.session_state.df_tukey = pd.DataFrame()
         st.session_state["_prev_tukeys_options"] = list(tukey_elements)
         st.session_state.tukey_elements = tukey_elements
 
-        c2.button(
+        run_btn = c2.button(
             "Run Tukey's",
             key="run_tukey",
             type="primary",
             disabled=len(st.session_state.tukey_elements) != 2,
         )
         # Only use existing ANOVA results, NOT rerun ANOVA calculations
-        if st.session_state.run_tukey:
+        if run_btn:
             import time
             progress_placeholder = st.empty()
             time_placeholder = st.empty()
+
             def progress_callback(done, total, est_left):
                 progress = done / total
                 progress_placeholder.progress(progress, text=f"Running Tukey's: {done}/{total}")
-                time_placeholder.info(f"Estimated time left: {int(est_left)} seconds")
+                if est_left is not None:
+                    time_placeholder.info(f"Estimated time left: {int(est_left)} seconds")
+            
             st.session_state.df_tukey = tukey(
                 st.session_state.df_anova,
                 st.session_state.anova_attribute,
@@ -125,6 +135,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
                 corrections_map[st.session_state.p_value_correction],
                 _progress_callback=progress_callback
             )
+
             progress_placeholder.empty()
             time_placeholder.empty()
             st.rerun()
@@ -140,9 +151,11 @@ if st.session_state.data is not None and not st.session_state.data.empty:
 
     if st.session_state.df_anova is not None and not st.session_state.df_anova.empty:
         tabs = st.tabs(tab_options)
+        
         with tabs[0]:
             fig = get_anova_plot(st.session_state.df_anova)
             show_fig(fig, "anova")
+        
         with tabs[1]:
             df_display = st.session_state.df_anova.copy()
             def sci_notation_or_plain(x):
@@ -164,6 +177,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
                 st.dataframe(styled, use_container_width=True)
             else:
                 st.dataframe(df_display, use_container_width=True)
+        
         with tabs[2]:
             ft = st.session_state.get("ft_gnps", pd.DataFrame())
             if ft is not None and not ft.empty:
@@ -193,8 +207,10 @@ if st.session_state.data is not None and not st.session_state.data.empty:
 
             met = st.session_state.anova_metabolite
             df_anova = st.session_state.df_anova
+
             # Show full metabolite name above the boxplot if available
             full_met_name = None
+
             if ft is not None and not ft.empty and met in ft.index and name_cols:
                 name_col = name_cols[0]
                 full_met_name = ft.at[met, name_col]
@@ -213,16 +229,23 @@ if st.session_state.data is not None and not st.session_state.data.empty:
 
             show_fig(fig, f"anova-{st.session_state.anova_metabolite}")
 
-        if st.session_state.df_tukey is not None and not st.session_state.df_tukey.empty:
+        if hasattr(st.session_state, "df_tukey") and st.session_state.df_tukey is not None and not st.session_state.df_tukey.empty:
             with tabs[3]:
-                # The DataFrame is no longer in a tuple, access it directly
                 fig1 = get_tukey_teststat_plot(getattr(st.session_state.df_tukey, '_original', st.session_state.df_tukey))
                 show_fig(fig1, "tukeys-teststat")
-                # The DataFrame is no longer in a tuple, access it directly
+                
                 fig2 = get_tukey_volcano_plot(getattr(st.session_state.df_tukey, '_original', st.session_state.df_tukey))
                 show_fig(fig2, "tukeys-volcano")
+            
             with tabs[4]:
                 df_tukey = st.session_state.df_tukey.copy()
+
+                if "anova_total" in st.session_state:
+                    st.caption(
+                        f"ℹ️ Tukey's post-hoc was run on {len(df_tukey)} features "
+                        f"out of {st.session_state.anova_total} ANOVA-tested features."
+                    )
+
                 def sci_notation_or_plain(x):
                     try:
                         if pd.isnull(x):
@@ -234,13 +257,14 @@ if st.session_state.data is not None and not st.session_state.data.empty:
                         return f"{x:.2e}"
                     except Exception:
                         return x
+                    
                 style_dict = {}
                 for col in ["p", "p-corrected"]:
                     if col in df_tukey.columns:
                         style_dict[col] = sci_notation_or_plain
+
                 if style_dict:
-                    styled = df_tukey.style.format(style_dict)
-                    st.dataframe(styled, use_container_width=True, hide_index=True)
+                    st.dataframe(df_tukey.style.format(style_dict), use_container_width=True, hide_index=True)
                 else:
                     st.dataframe(df_tukey, use_container_width=True, hide_index=True)
 

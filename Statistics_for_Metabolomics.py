@@ -10,29 +10,37 @@ st.image("assets/FBMN-STATS-GUIed_logo2.png", use_container_width=True)
 st.markdown("""
 ## Quickstart Guide
 
-Welcome to the FBMN-STATS, a web app implementation of the [statistics notebooks](https://github.com/Functional-Metabolomics-Lab/Statistical-analysis-of-non-targeted-LC-MSMS-data) for metabolomics by the [Functional Metabolomics Lab](https://github.com/Functional-Metabolomics-Lab).
-             as part of the article '[The Statistical Analysis of Feature-based Molecular Networking Results from Non-Targeted Metabolomics Data](https://doi.org/10.26434/chemrxiv-2023-wwbt0)'. 
+Welcome to the FBMN-STATS, a web app implementation of the [statistics notebooks](https://github.com/Functional-Metabolomics-Lab/Statistical-analysis-of-non-targeted-LC-MSMS-data) for metabolomics by the [Functional Metabolomics Lab](https://github.com/Functional-Metabolomics-Lab) 
+            as part of the article '[The Statistical Analysis of Feature-based Molecular Networking Results from Non-Targeted Metabolomics Data](https://doi.org/10.26434/chemrxiv-2023-wwbt0)'. 
             These notebooks are developed by the Virtual MultiOmics Lab ([VMOL](https://vmol.org/)).
-            This app facilitates downstream statistical analysis of Feature-Based Molecular Networking data, simplifying the process for researchers.       
+            This app facilitates downstream statistical analysis of molecular networking data, simplifying the process for researchers.       
 
 ### Getting Started
-This web app requires two primary inputs: a feature quantification table and metadata table. Users with FBMN Job IDs from GNPS or GNPS2 can easily fetch necessary files by entering the job IDs via the 'Data Preparation' page. 
+This web app requires two primary inputs: a feature quantification table and metadata table. 
+            Users with FBMN Job IDs from GNPS or GNPS2 can easily fetch necessary files by entering the job IDs via the 'Data Preparation' page. 
             This page also offers subsequent data cleanup steps such as Blank Removal, Imputation, and Normalization.
+            """)
 
-**⚠️ Warning:** Our data cleanup options, including normalization methods like Total Ion Count (TIC) normalization and center-scaling, are selected due to their widespread use. However, we recognize that these methods may not be suitable for all types of data. We encourage users to consider various normalization techniques to best suit their dataset's needs.
-            This tool aims to offer a quick results overview and serves primarily for educational purposes. For comprehensive insights into data cleanup methodologies, please refer to our article and the referenced literature.
+st.warning("""**⚠️** Our data cleanup options, including TIC normalization and center-scaling, are provided for quick and educational use. 
+            These methods may not suit all datasets, so users should choose normalization strategies that best fit their data. 
+            For more detailed guidance, please refer to our article or reach out to us to suggest additional methods you’d find useful.
 """)
 
-
 st.subheader('Data Preparation Essentials')
-st.markdown("""
-- Required tables: **Quantification** and **Metadata**
-- Supported formats include: `tsv`, `txt`, `csv`, and `xlsx`
-- Feature tables with an **metabolite** column are indexed accordingly
-- Automatic feature indexing available with `m/z`, `RT`, and optional `row ID` columns
-- Sample filenames must include `mzML` extensions
-- The metadata table must have a `filename` column and can include attribute columns
-- Example data available for reference
+st.info("""
+**Required Inputs & Supported Formats**
+- Must upload two tables: **Feature quantification table** and **Metadata**
+- Supported file types: **.tsv**, **.txt**, **.csv**, and **.xlsx**
+- Feature tables should include a **`metabolite`** column for direct indexing
+- Automatic feature indexing is supported via **`m/z`**, **`RT`**, and **`row ID`** columns
+- Example datasets are available for quick reference
+""")
+
+st.warning("""
+**⚠️ Important Notes**
+- Sample filenames must contain the **`mzML`** extension for correct mapping
+- The metadata table must include a **`filename`** column; additional attribute columns are optional
+- Ensure consistent sample names between feature and metadata tables
 - Proceed to **Data Cleanup** for blank removal and missing value imputation
 """)
 
@@ -45,6 +53,7 @@ Example feature table:
 |2|2000|2200|200|
 """)
 st.write(' ')
+
 st.markdown("""        
 Example meta data table:
             
@@ -55,21 +64,20 @@ Example meta data table:
 |blank.mzML|Blank|N/A| 
 """)
 
-st.write(' ')
 st.subheader('Statistical Analyses Available')
 st.markdown("""
-- **PCA**
-- **Multivariate Analysis:** PERMANOVA & PCoA
-- **Hierarchical Clustering & Heatmaps**
-- **Univariate Analysis:** ANOVA, Tukey's, Student's t-test, Kruskal-Wallis & Dunn's
+            - **Unsupervised Learning:** PCA, PCoA (with PERMANOVA), Hierarchical Clustering & Heatmaps  
+            - **Supervised Learning:** Random Forest (simplified implementation)  
+            - **Univariate Analysis:**  
+                - **ANOVA** and Tukey's test (parametric, > 2 groups)  
+                - **Student's t-test** (parametric, for 2 groups)  
+                - **Kruskal–Wallis test** and Dunn's test (non-parametric, > 2 groups)
 """)
-
 
 st.subheader('Outputs')
 st.markdown("""
-Generated results include csv tables and images, aiding in data presentation and publication.
-""")
-
+            Generated results include csv tables and images, aiding in data presentation and publication.
+            """)
 
 st.subheader('Interactive Plots')
 st.markdown("""
@@ -109,14 +117,14 @@ Your feedback and suggestions are invaluable to us as we strive to enhance this 
             As a small team, we greatly appreciate any contributions you can make. 
             Please feel free to create an issue on our GitHub repository to share your thoughts or report any issues you encounter.
 
-[Create an Issue on GitHub](https://github.com/Functional-Metabolomics-Lab/FBMN-STATS/issues/new)
+[Create an Issue on GitHub](https://github.com/Functional-Metabolomics-Lab/FBMN-STATS-Webapp/issues/new)
 """)
 
 st.subheader("Functional-Metabolomics-Lab")
 
 c1, c2, c3 = st.columns(3)
 c1.markdown(
-    """<a href="https://github.com/Functional-Metabolomics-Lab">
+    """<a href="https://github.com/Functional-Metabolomics-Lab/FBMN-STATS-Webapp">
     <img src="data:image/png;base64,{}" width="100">
     </a>""".format(
         base64.b64encode(open("./assets/github-logo.png", "rb").read()).decode()

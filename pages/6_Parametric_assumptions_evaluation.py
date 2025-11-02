@@ -10,8 +10,39 @@ st.markdown("## Normal Distribution and Equal Variance")
 
 with st.expander("📖 Why is this important?"):
     st.markdown(
-        "When analyzing data, it is important to choose the appropriate statistical test to use. One of the factors to consider is whether the data follows a normal distribution and has equal variance. This is because many statistical tests assume that the data is normally distributed and has equal variance. If the data violates these assumptions, parametric tests may not be appropriate and non-parametric tests should be used instead. In this context, testing for normal distribution and equal variance is crucial in determining the most suitable statistical test for the analysis."
-    )
+        """
+        Before running statistical tests such as *t-tests* or *ANOVA*, it's important to verify whether your data meet the assumptions of **normal distribution** and **equal variances** between groups.  
+        This page helps you assess these assumptions for your selected two groups.
+
+        ##### 🧪 How to interpret the histograms?
+
+        - The **x-axis** shows the *p-value range* (0 - 1).  
+        - The **y-axis** shows the *number of features* (metabolites) that fall within each p-value range.  
+        - Bars toward the **right (p > 0.05)** indicate features that likely satisfy the assumption.  
+        - Bars toward the **left (p < 0.05)** indicate features that likely violate the assumption.
+
+        **Normality (Shapiro–Wilk test)**  
+        - Tests whether data for each feature are *normally distributed*.  
+        - If most p-values are **> 0.05**, the data are approximately normal.  
+        - If many are **< 0.05**, the data deviate from normality, so consider *non-parametric* tests.
+
+        **Equal variance (Levene’s test)**  
+        - Tests whether variances between groups are *equal*.  
+        - If most p-values are **> 0.05**, the variances can be treated as equal.  
+        - If many are **< 0.05**, variances differ → use *Welch’s t-test* or *non-parametric* methods.
+
+        ##### 🧭 Choosing the right test based on results
+
+        | Normality | Equal variance | Recommended test |
+        |------------|----------------|------------------|
+        | ✅ Normal | ✅ Equal | **Student's t-test** or **ANOVA** |
+        | ✅ Normal | ❌ Unequal | **Welch's t-test** |
+        | ❌ Non-normal | ✅ or ❌ | **Mann–Whitney U test** or **Kruskal–Wallis test** |
+
+        💡 *Tip:*  
+        If most bars are concentrated on the **right side (p > 0.05)** of both histograms, parametric tests like *Student's t-test* or *ANOVA* are suitable. If they cluster on the **left (p < 0.05)**, non-parametric tests such as *Kruskal–Wallis* or *Mann–Whitney U* are more appropriate.
+""")
+
 
 if st.session_state.data is not None and not st.session_state.data.empty:
     c1, c2 = st.columns(2)

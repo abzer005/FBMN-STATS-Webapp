@@ -86,7 +86,34 @@ def gen_ttest_data(ttest_attribute, target_groups, paired, alternative, correcti
     ttest.insert(11, "A", target_groups[0])
     ttest.insert(12, "B", target_groups[1])
 
+    # Clean up data types to avoid serialization issues
+    ttest = _clean_ttest_dataframe(ttest)
+
     return ttest.sort_values("p-corrected")
+
+def _clean_ttest_dataframe(df):
+    """Clean up t-test dataframe to avoid Arrow serialization issues."""
+    df = df.copy()
+    
+    # Ensure all numeric columns are proper numeric types
+    numeric_cols = ["p-val", "p-corrected", "mean(A)", "mean(B)", "df"]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Ensure boolean columns are proper boolean types
+    bool_cols = ["significance"]
+    for col in bool_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(bool)
+    
+    # Ensure string columns are proper string types
+    str_cols = ["ttest_type", "st.session_state.ttest_attribute", "A", "B"]
+    for col in str_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str)
+    
+    return df
 
 
 @st.cache_resource
@@ -255,95 +282,64 @@ def get_ttest_volcano_plot(df):
 
 @st.cache_resource
 def ttest_boxplot(df_ttest, metabolite):
-    df = pd.concat([st.session_state.md, st.session_state.data], axis=1)
-    
-    # Filter for the two selected groups
-    df_filtered = df[df[st.session_state.ttest_attribute].isin(st.session_state.ttest_options)]
+    attribute = st.session_state.ttest_attribute
+    p_value = df_ttest.loc[metabolite, "p-corrected"]
+
+    df = pd.concat([st.session_state.data, st.session_state.md], axis=1)[[attribute, metabolite]].copy()
+
+    # Filter for the two selected groups and ensure only those two are present, in order
+    options = st.session_state.ttest_options
+    df = df[df[attribute].isin(options)].copy()
+    df[attribute] = pd.Categorical(df[attribute], categories=options, ordered=True)
+    df = df.reset_index().rename(columns={"index": "filename"})
+    if df.columns[0] == "filename" and st.session_state.data.index.name:
+        df.rename(columns={"filename": st.session_state.data.index.name}, inplace=True)
+
+    feature_map = _get_ttest_feature_map()
+    metabolite_name = feature_map.get(metabolite, metabolite) if feature_map else metabolite
+    df["metabolite_name"] = metabolite_name
+
+    df["intensity"] = df[metabolite]
+    df["hovertext"] = df.apply(lambda row: f"filename: {row['filename']}<br>attribute&group: {attribute}, {row[attribute]}<br>metabolite&name: {row['metabolite_name']}<br>intensity: {row['intensity']}", axis=1)
+
+    try:
+        p_value_float = float(p_value)
+        p_value_str = f"{p_value_float:.2e}"
+    except Exception:
+        p_value_float = None
+        p_value_str = str(p_value)
+
+    # Determine significance
+    is_significant = p_value_float is not None and p_value_float < 0.05
+    significance_text = "Significant" if is_significant else "Insignificant"
+    title = f"{significance_text} Metabolite: {metabolite_name}<br>Corrected p-value: {p_value_str}"
     
     # Create the plot from the filtered dataframe
     fig = px.box(
-        df_filtered,
-        x=st.session_state.ttest_attribute,
+        df,
+        x=attribute,
         y=metabolite,
-        color=st.session_state.ttest_attribute,
-        width=350,
-        height=400,
+        color=attribute,
+        template="plotly_white",
         points="all",
-        custom_data=[st.session_state.ttest_attribute, metabolite],
+        hover_data=None,
+        custom_data=[df["hovertext"]],
     )
 
-    # Set custom hovertemplate
-    attribute = st.session_state.ttest_attribute if hasattr(st, "session_state") and hasattr(st.session_state, "ttest_attribute") else "Attribute"
-    hovertemplate = (
-        f"attribute: {attribute}<br>"
-        "option: %{customdata[0]}<br>"
-        f"metabolite&name: {metabolite}<br>"
-        "intensity: %{customdata[1]:.3g}<extra></extra>"
-    )
-    fig.update_traces(hovertemplate=hovertemplate)
-    
-    # Determine significance label
-    is_significant = False
-    pvalue = 1.0
-    if metabolite in df_ttest.index:
-        is_significant = df_ttest.loc[metabolite, "significance"] if "significance" in df_ttest.columns else False
-        pvalue = df_ttest.loc[metabolite, "p-corrected"]
-        
-    sig_label = "Significant Metabolite:" if is_significant else "Insignificant Metabolite:"
+    fig.update_traces(hovertemplate="%{customdata[0]}")
     
     fig.update_layout(
-        showlegend=False,
-        xaxis_title=st.session_state.ttest_attribute.replace("st.session_state.ttest_attribute_", ""),
+        boxmode='group',
+        xaxis_title=attribute,
         yaxis_title="intensity",
         template="plotly_white",
         font={"color": "grey", "size": 12, "family": "Sans"},
         title={
-            "text": f"{sig_label} {metabolite}",
+            "text": title,
             "font_color": "#3E3D53",
         },
+        autosize=True,
     )
     fig.update_yaxes(title_standoff=10)
     
-    if pvalue >= 0.05:
-        symbol = "ns"
-    elif pvalue >= 0.01:
-        symbol = "*"
-    elif pvalue >= 0.001:
-        symbol = "**"
-    else:
-        symbol = "***"
-
-    # Get y-max from the filtered data
-    y_max = df_filtered[metabolite].max()
-    top_y = y_max * 1.2 if pd.notnull(y_max) else 1
-
-    # Define x-coordinates for the line/annotation
-    x0 = st.session_state.ttest_options[0]
-    x1 = st.session_state.ttest_options[1]
-
-    # horizontal line
-    fig.add_shape(
-        type="line",
-        x0=x0,
-        y0=top_y,
-        x1=x1,
-        y1=top_y,
-        line=dict(width=1, color="#000000"),
-    )
-    
-    if symbol == "ns":
-        y_margin = y_max * 0.05 if pd.notnull(y_max) else 0.05
-    else:
-        y_margin = y_max * 0.1 if pd.notnull(y_max) else 0.1
-        
-    # Center the annotation
-    # This works for categorical x-axis
-    fig.add_annotation(
-        x=0.5,  # Center point for 2 categories
-        xref="paper", # Use paper reference for x
-        y=top_y + y_margin,
-        text=f"<b>{symbol}</b>",
-        showarrow=False,
-        font_color="#555555",
-    )
     return fig

@@ -176,9 +176,50 @@ def open_df(file):
         # sometimes dataframes get saved with unnamed index, that needs to be removed
         if "Unnamed: 0" in df.columns:
             df.drop("Unnamed: 0", inplace=True, axis=1)
+        
+        # Fix data type issues that cause Arrow serialization problems
+        df = _fix_dataframe_types(df)
+        
         return df
     except:
         return pd.DataFrame()
+
+def _fix_dataframe_types(df):
+    """
+    Fix data type issues in dataframes that cause Arrow serialization and hashing problems.
+    Converts problematic object columns to string or numeric types.
+    """
+    df = df.copy()
+    
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            # Try to convert to numeric first
+            try:
+                # Check if the column contains mostly numeric values
+                numeric_values = pd.to_numeric(df[col], errors='coerce')
+                non_null_count = numeric_values.count()
+                total_count = len(df[col])
+                
+                # If more than 80% of values are numeric, convert to numeric
+                if non_null_count / total_count > 0.8:
+                    df[col] = numeric_values
+                else:
+                    # Convert to string to avoid mixed types
+                    df[col] = df[col].astype(str).replace('nan', '')
+            except:
+                # If conversion fails, convert to string
+                df[col] = df[col].astype(str).replace('nan', '')
+    
+    # Remove any columns that might contain unhashable types like numpy arrays
+    for col in df.columns:
+        try:
+            # Test if the column can be hashed (this will catch numpy arrays)
+            pd.util.hash_pandas_object(df[[col]])
+        except (TypeError, ValueError):
+            # Convert problematic columns to string representation
+            df[col] = df[col].apply(lambda x: str(x) if x is not None else '')
+    
+    return df
 
 def show_table(df, title="", col="", download=True):
     if col:

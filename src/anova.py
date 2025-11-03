@@ -319,13 +319,8 @@ def tukey(df, attribute, elements, correction, _progress_callback=None):
         # nothing to run Tukey on
         return pd.DataFrame()
 
-    data = pd.concat(
-        [
-            st.session_state.data.loc[:, valid_metabolites],
-            st.session_state.md.loc[:, attribute],
-        ],
-        axis=1,
-    )
+    data = pd.concat([st.session_state.data.loc[:, valid_metabolites],
+            st.session_state.md.loc[:, attribute]], axis=1)
     data = data[data[attribute].isin(elements)]
     
     tukey = pd.DataFrame(
@@ -333,36 +328,19 @@ def tukey(df, attribute, elements, correction, _progress_callback=None):
             gen_pairwise_tukey(
                 data, valid_metabolites, attribute, _progress_callback=_progress_callback
                 ),
-                dtype=[
-                    ("stats_metabolite", "U100"),
-                    (f"diff", "f"),
-                    ("stats_p", "f"),
-                    ("attribute", "U100"),
-                    ("A", "U100"),
-                    ("B", "U100"),
-                    ("mean(A)", "f"),
-                    ("mean(B)", "f"),
-                    ],
+                dtype=[("stats_metabolite", "U100"), (f"diff", "f"), (f"stats_p", "f"), ("attribute", "U100"), ("A", "U100"), ("B", "U100"), ("mean(A)", "f"), ("mean(B)", "f"),],
         )
     )
 
     tukey = tukey.dropna()
     tukey = add_p_value_correction_to_tukeys(tukey, correction)
 
-    tukey = tukey.rename(
-        columns={
-            "stats_metabolite": "metabolite",
-            "stats_p": "p",
-            "stats_significant": "significant"
-        }
-    )
+    tukey = tukey.rename(columns={ "stats_metabolite": "metabolite", "stats_p": "p", "stats_significant": "significant"})
     tukey_display = tukey.copy()
     st.session_state.tukey_n = len(tukey_display)
 
     if "p" in tukey_display.columns:
-        tukey_display["p"] = tukey_display["p"].apply(
-            lambda x: f"{x:.2e}" if pd.notnull(x) else x
-        )
+        tukey_display["p"] = tukey_display["p"].apply(lambda x: f"{x:.2e}" if pd.notnull(x) else x)
     
     if "diff" in tukey_display.columns:
         cols = [c for c in tukey_display.columns if c != "diff"] + ["diff"]
@@ -376,17 +354,13 @@ def add_p_value_correction_to_tukeys(tukey, correction):
     tukey["stats_p"] = pd.to_numeric(tukey["stats_p"], errors="coerce")
 
     if "p-corrected" not in tukey.columns:
-         if correction and correction.lower() != "none":
-            tukey.insert(
-                3, 
-                "p-corrected", 
-                pg.multicomp(tukey["stats_p"].astype(float), method=correction)[1]
-            )
-         else:
+        if correction and correction.lower() != "none":
+            tukey.insert(3, "p-corrected", pg.multicomp(tukey["stats_p"].astype(float), method=correction)[1])
+        else:
             tukey.insert(3, "p-corrected", tukey["stats_p"])
 
-         tukey.insert(4, "stats_significant", tukey["p-corrected"] < 0.05)
-         tukey.sort_values("stats_p", inplace=True)
+        tukey.insert(4, "stats_significant", tukey["p-corrected"] < 0.05)
+        tukey.sort_values("stats_p", inplace=True)
     return tukey
 
 def _get_tukey_feature_map(df_tukey):

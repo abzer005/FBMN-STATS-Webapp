@@ -50,7 +50,6 @@ try:
         n_component = min(10, max_allowed)
         st.session_state["n_components"] = n_component
 
-
         # Check if pcoa_attribute is valid before accessing DataFrame
         if (st.session_state.pcoa_attribute is None or st.session_state.pcoa_attribute not in st.session_state.md.columns):
             st.warning("Please select a valid attribute for PCoA.\n\nA valid attribute is required to group your samples for multivariate analysis. Make sure to choose a column from your metadata that contains categorical groupings (e.g., treatment, condition, or sample type) with at least two unique values. If no options appear, check that your metadata table is loaded and contains appropriate columns.")
@@ -58,15 +57,6 @@ try:
 
         attribute_series = st.session_state.md[st.session_state.pcoa_attribute].dropna()
         unique_categories = attribute_series.nunique()
-
-        max_pcoa = 10
-        pcoa_labels = [f"PC{i+1}" for i in range(max_pcoa)]
-
-        col1, col2 = st.columns(2)
-        with col1:
-            pcoa_x_axis = st.selectbox("Interested X-axis for plot", pcoa_labels)
-        with col2:
-            pcoa_y_axis = st.selectbox("Interested Y-axis for plot", pcoa_labels, index = 1)
 
         att_col = st.session_state.pcoa_attribute
         
@@ -88,31 +78,44 @@ try:
             permanova, pcoa_result = permanova_pcoa(
                 filtered_data,
                 st.session_state.pcoa_distance_matrix,
-                st.session_state.md[st.session_state.pcoa_attribute],
+                filtered_md[st.session_state.pcoa_attribute],
             )
 
-            if pcoa_x_axis == pcoa_y_axis:
-                st.warning("⚠️ X-axis and Y-axis cannot be the same. Please choose different axes to view results.")
-            else: 
-                if not permanova.empty:
-                    t1, t2, t3, t4 = st.tabs(["📁 PERMANOVA statistics", "📈 Principal Coordinate Analysis", "📊 Explained variance", "📁 Data"])
-                    with t1:
-                        show_table(permanova, "PERMANOVA-statistics")
-                    with t2:
-                        fig = get_pcoa_scatter_plot(
-                            pcoa_result,
-                            filtered_md,
-                            st.session_state.pcoa_attribute,
-                            pcoa_x_axis,
-                            pcoa_y_axis, 
-                            st.session_state.pcoa_category_filter
-                        )
-                        show_fig(fig, "principal-coordinate-analysis")
-                    with t3:
-                        fig = get_pcoa_variance_plot(pcoa_result)
-                        show_fig(fig, "pcoa-variance")
-                    with t4:
-                        show_table(pcoa_result.samples.iloc[:, :10], "principal-coordinates")
+            # Dynamically determine available PCs from pcoa_result.samples columns
+            available_pcs = [col for col in pcoa_result.samples.columns if col.startswith("PC")]
+            available_pcs = available_pcs[:10]
+            if len(available_pcs) < 2:
+                st.warning("Not enough principal coordinates available for plotting.")
+            else:
+                col1, col2 = st.columns(2)
+                with col1:
+                    pcoa_x_axis = st.selectbox("Interested X-axis for plot", available_pcs, key="pcoa_x_axis")
+                with col2:
+                    pcoa_y_axis = st.selectbox("Interested Y-axis for plot", available_pcs, index=1 if len(available_pcs) > 1 else 0, key="pcoa_y_axis")
+
+                if pcoa_x_axis == pcoa_y_axis:
+                    st.warning("⚠️ X-axis and Y-axis cannot be the same. Please choose different axes to view results.")
+                else:
+                    if not permanova.empty:
+                        t1, t2, t3, t4 = st.tabs(["📁 PERMANOVA statistics", "📈 Principal Coordinate Analysis", "📊 Explained variance", "📁 Data"])
+                        with t1:
+                            show_table(permanova, "PERMANOVA-statistics")
+                        with t2:
+                            fig = get_pcoa_scatter_plot(
+                                pcoa_result,
+                                filtered_md,
+                                st.session_state.pcoa_attribute,
+                                pcoa_x_axis,
+                                pcoa_y_axis,
+                                st.session_state.pcoa_category_filter
+                            )
+                            show_fig(fig, "principal-coordinate-analysis")
+                        with t3:
+                            fig = get_pcoa_variance_plot(pcoa_result)
+                            show_fig(fig, "pcoa-variance")
+                        with t4:
+                            filtered_samples = pcoa_result.samples.loc[filtered_md.index]
+                            show_table(filtered_samples.iloc[:, :10], "principal-coordinates")
 
     else:
         st.warning("⚠️ Please complete data preparation step first!")

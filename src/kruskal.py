@@ -243,7 +243,7 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
             results.append(
                 {
                     "contrast": f"{gA}-{gB}",
-                    "stats_metabolite": metabolite,
+                    "metabolite": metabolite,
                     "rank_sum_diff": np.nan,
                     "p": np.nan,
                 }
@@ -287,7 +287,7 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
         results.append(
             {
                 "contrast": f"{gA}-{gB}",
-                "stats_metabolite": metabolite,
+                "metabolite": metabolite,
                 "rank_sum_diff": rank_sum_diff,
                 "p": p_val,
             }
@@ -302,6 +302,7 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
 
     # global p-correction (only if user asked)
     dunn_df["p"] = pd.to_numeric(dunn_df["p"], errors="coerce")
+    dunn_df["rank_sum_diff"] = pd.to_numeric(dunn_df["rank_sum_diff"], errors="coerce")
     
     if correction and correction.lower() != "none":
         dunn_df = add_p_value_correction_to_dunns(dunn_df, correction)
@@ -311,7 +312,7 @@ def dunn(df, attribute, elements, correction, _progress_callback=None):
             dunn_df["p-corrected"] = dunn_df["p"]
         pcol = "p-corrected"
 
-    dunn_df["stats_significant"] = dunn_df[pcol] < 0.05
+    dunn_df["significant"] = dunn_df[pcol] < 0.05
     dunn_df = dunn_df.sort_values(pcol)
 
     st.session_state.dunn_n = len(dunn_df)
@@ -373,7 +374,7 @@ def add_p_value_correction_to_dunns(dunn, correction):
             dunn.insert(2, "p-corrected", dunn["p"])
 
         # add significance
-        dunn.insert(3, "stats_significant", dunn["p-corrected"] < 0.05)
+        dunn.insert(3, "significant", dunn["p-corrected"] < 0.05)
     
     # sort by p-value
     sort_col = "p-corrected" if "p-corrected" in dunn.columns else "p"
@@ -400,13 +401,17 @@ def get_dunn_teststat_plot(df):
     # numeric data
     df_numeric = getattr(df, '_original', df).copy()
     
-    sig_col = "stats_significant" if "stats_significant" in df_numeric.columns else "significant"
-    met_col = "stats_metabolite" if "stats_metabolite" in df_numeric.columns else "metabolite"
-    diff_col = "rank_sum_diff" if "rank_sum_diff" in df_numeric.columns else None
+    sig_col = "significant"
+    met_col = "metabolite"
+    diff_col = "rank_sum_diff"
 
-    if diff_col is None:
+    if diff_col not in df_numeric.columns:
         st.error("Rank-sum difference column is not found in Dunn's results. Please rerun the analysis.")
         return fig
+    
+    if sig_col not in df_numeric.columns:
+        st.warning("Significance column not found, showing all points as insignificant.")
+        df_numeric[sig_col] = False
     
     if "p-corrected" in df_numeric.columns:
         p_col = "p-corrected"
@@ -590,4 +595,3 @@ def get_dunn_volcano_plot(df):
         height=600,
     )
     return fig
-

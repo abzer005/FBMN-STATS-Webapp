@@ -6,6 +6,8 @@ on:
 jobs:
   build-executable:
     runs-on: windows-latest
+    permissions:
+      contents: write 
 
     env:
       PYTHON_VERSION: 3.11.0
@@ -161,7 +163,7 @@ jobs:
 
             <!-- Run app directly after installation -->
             <!-- <CustomAction Id="RunApp" Directory="AppSubFolder" Execute="deferred" Return="asyncNoWait" Impersonate="no"
-                          ExeCommand="cmd.exe /c &quot;[AppSubFolder]${{ env.APP_NAME }}.bat&quot;" /> -->
+                  ExeCommand="cmd.exe /c &quot;[AppSubFolder]${{ env.APP_NAME }}.bat&quot;" /> -->
             
             <!-- Custom Action to Show Success Message -->
             <Binary Id="ShowMessageScript" SourceFile="SourceDir/ShowSuccessMessage.vbs" />
@@ -177,8 +179,8 @@ jobs:
 
             <!-- Interface options -->
             <UI>
-                  <UIRef Id="WixUI_InstallDir" />
-                  <UIRef Id="WixUI_ErrorProgressText" />
+              <UIRef Id="WixUI_InstallDir" />
+              <UIRef Id="WixUI_ErrorProgressText" />
             </UI> 
 
             <!-- Provide license; it should exist in the SourceDir folder -->
@@ -195,9 +197,12 @@ jobs:
       run: |
         ./wix/light.exe -ext WixUIExtension -sice:ICE60 -o ${{ env.APP_NAME }}.msi streamlit_exe_files.wixobj streamlit_exe.wixobj
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: FBmn-STATS-GUIde
-        path: |
-          ${{ env.APP_NAME }}.msi
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ${{ env.APP_NAME }}.msi
+        asset_name: ${{ env.APP_NAME }}.msi
+        asset_content_type: application/msi

@@ -138,9 +138,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
     # Only show tabs if t-test results exist (button pressed and results generated)
     ttest_stat_cols = {"T", "T-val", "t", "tval"}
     df = st.session_state.df_ttest
-    if df is not None and not df.empty and any(col in df.columns for col in ttest_stat_cols):
-        # Added Volcano plot tab
-
+    if df is not None and not df.empty:
         tabs = st.tabs(["📈 Feature significance", "📈 Volcano plot", "📊 Single metabolite plots", "📁 Data"])
 
         with tabs[0]:
@@ -160,6 +158,7 @@ if st.session_state.data is not None and not st.session_state.data.empty:
             metabolite_options = list(df.index)
             def metabolite_label(m):
                 return m.split("&")[0] if "&" in m else m
+            
             st.selectbox("metabolite", metabolite_options, key="ttest_metabolite", format_func=metabolite_label)
             # Only plot if the selected metabolite is in the data columns
             if st.session_state.ttest_metabolite in st.session_state.data.columns:

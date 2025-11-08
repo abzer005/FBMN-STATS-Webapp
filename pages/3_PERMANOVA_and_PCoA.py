@@ -35,16 +35,23 @@ try:
         with c1: 
             st.selectbox(
                 "attribute for multivariate analysis",
-                [c for c in st.session_state.md.columns if len(set(st.session_state.md[c])) > 1 and len(set(st.session_state.md[c])) != st.session_state.md.shape[0]],
+                st.session_state.md.columns,
                 key="pcoa_attribute",
             )
         with c2: 
-            st.selectbox(
-                "distance matrix",
-                ["braycurtis", "canberra", "chebyshev", "cityblock", "correlation", "cosine", "euclidean", "hamming", "jaccard", "matching", "minkowski", "seuclidean", "sqeuclidean"],
-                key="pcoa_distance_matrix",
-                index = 6
+            attribute_series = st.session_state.md[st.session_state.pcoa_attribute].dropna()
+            unique_categories = attribute_series.nunique()
+
+            att_col = st.session_state.pcoa_attribute
+            
+            options = sorted(st.session_state.md[att_col].dropna().unique())
+            allowed_categories = st.multiselect(
+                f"Filter categories in '{att_col}'", 
+                options = options,
+                default = options, 
+                key = "pcoa_category_filter"
             )
+            
 
         max_allowed = min(st.session_state.data.shape[0], st.session_state.data.shape[1])
         n_component = min(10, max_allowed)
@@ -55,23 +62,23 @@ try:
             st.warning("Please select a valid attribute for PCoA.\n\nA valid attribute is required to group your samples for multivariate analysis. Make sure to choose a column from your metadata that contains categorical groupings (e.g., treatment, condition, or sample type) with at least two unique values. If no options appear, check that your metadata table is loaded and contains appropriate columns.")
             st.stop()
 
-        attribute_series = st.session_state.md[st.session_state.pcoa_attribute].dropna()
-        unique_categories = attribute_series.nunique()
-
-        att_col = st.session_state.pcoa_attribute
         
-        options = sorted(st.session_state.md[att_col].dropna().unique())
-        allowed_categories = st.multiselect(
-            f"Filter categories in '{att_col}'", 
-            options = options,
-            default = options, 
-            key = "pcoa_category_filter"
-        )
         selected_categories = st.session_state.pcoa_category_filter
+        # Filter metadata and data for selected categories before using them
         filtered_md = st.session_state.md[st.session_state.md[att_col].isin(selected_categories)]
         filtered_data = st.session_state.data.loc[filtered_md.index]
 
+        st.selectbox(
+            "distance matrix",
+            ["braycurtis", "canberra", "chebyshev", "cityblock", "correlation", "cosine", "euclidean", "hamming", "jaccard", "matching", "minkowski", "seuclidean", "sqeuclidean"],
+            key="pcoa_distance_matrix",
+            index = 6
+        )
 
+        # Display selected categories and their samples in a dataframe
+        # st.markdown(f"**Selected categories in '{att_col}':** {', '.join(map(str, selected_categories))}")
+        # st.dataframe(filtered_md[[att_col]], use_container_width=True)
+        
         if len(filtered_md[att_col].unique()) < 2:
             st.warning("⚠️ PERMANOVA cannot be calculated for this group because there is only one category in the selected attribute. You need at least two categories to perform statistical testing.")
         else:
@@ -107,7 +114,6 @@ try:
                                 st.session_state.pcoa_attribute,
                                 pcoa_x_axis,
                                 pcoa_y_axis,
-                                st.session_state.pcoa_category_filter
                             )
                             show_fig(fig, "principal-coordinate-analysis")
                         with t3:

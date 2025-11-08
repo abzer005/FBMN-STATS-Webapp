@@ -9,7 +9,7 @@ page_setup()
 st.markdown("# File Selection")
 
 if st.session_state["data_preparation_done"]:
-    st.success("Data preparation was successful!")
+    st.success("Data preparation was successful! Navigate to other pages to perform statistical analysis.")
     if st.button("Re-do the data preparation step now."):
         reset_dataframes()
         st.session_state["data_preparation_done"] = False
@@ -100,10 +100,17 @@ else:
             _, c2, _ = st.columns(3)
 
             if c2.button("Load files from GNPS2", type="primary", disabled=len(task_id) == 0, use_container_width=True):
-                st.session_state["ft_gnps"], st.session_state["md_gnps"],  st.session_state["an_gnps"], st.session_state["nw_gnps"] = load_from_gnps2_cmn(task_id)
+                try:
+                    st.session_state["ft_gnps"], st.session_state["md_gnps"],  st.session_state["an_gnps"], st.session_state["nw_gnps"] = load_from_gnps2_cmn(task_id)
+                except ValueError as e:
+                    st.warning("No results were found from the GNPS workflow.")
+                    # Optionally, you can log or display the error message: st.info(str(e))
                 st.session_state["ft_gnps"] = st.session_state["ft_gnps"]
 
-                if not st.session_state["ft_gnps"].empty and st.session_state["md_gnps"].empty:
+                if (
+                    st.session_state.get("ft_gnps") is not None and hasattr(st.session_state["ft_gnps"], "empty") and not st.session_state["ft_gnps"].empty
+                    and st.session_state.get("md_gnps") is not None and hasattr(st.session_state["md_gnps"], "empty") and st.session_state["md_gnps"].empty
+                ):
                     st.warning("⚠️ **Metadata file is missing.** The metadata is essential for performing statistical analysis and understanding the context of your data. Please upload one.")
                     md_file = st.file_uploader("Metadata Table")
                     if md_file:
@@ -360,6 +367,9 @@ else:
                 df = inside_levels(md)
                 mask = df.apply(lambda row: len(row['LEVELS']) == 0, axis=1)
                 df = df[~mask]
+                # Fix ArrowTypeError: ensure 'correlation group ID' column is string if present
+                if 'correlation group ID' in df.columns:
+                    df['correlation group ID'] = df['correlation group ID'].astype(str)
                 st.dataframe(df)
                 c1, c2 = st.columns(2)
                 sample_column = c1.selectbox(
@@ -367,7 +377,11 @@ else:
                     md.columns,
                 )
                 sample_options = list(set(md[sample_column].dropna()))
-                sample_rows = c2.multiselect("sample selection", sample_options, sample_options[0])
+                if sample_options:
+                    sample_rows = c2.multiselect("sample selection", sample_options, sample_options[0])
+                else:
+                    sample_rows = []
+                    c2.info("No sample rows detected. There are no samples to select.")
                 samples = ft[md[md[sample_column].isin(sample_rows)].index]
                 samples_md = md.loc[samples.columns]
 
@@ -396,7 +410,11 @@ else:
                         "attribute for blank selection", non_samples_md.columns
                     )
                     blank_options = list(set(non_samples_md[blank_column].dropna()))
-                    blank_rows = c2.multiselect("blank selection", blank_options, blank_options[0])
+                    if blank_options:
+                        blank_rows = c2.multiselect("blank selection", blank_options, blank_options[0])
+                    else:
+                        blank_rows = []
+                        c2.info("No blank rows detected. There are no blank samples to select.")
                     blanks = ft[non_samples_md[non_samples_md[blank_column].isin(blank_rows)].index]
                     with st.expander(f"Selected blanks preview (n={blanks.shape[1]})"):
                         st.dataframe(blanks.head())
@@ -432,7 +450,6 @@ else:
                 cutoff_LOD = get_cutoff_LOD(ft)
 
                 with tabs[1]:
-
                     c1, c2 = st.columns(2)
                     c2.metric(
                         f"total missing values",
@@ -489,10 +506,10 @@ else:
                         fig = get_missing_values_per_feature_fig(ft, cutoff_LOD if cutoff_LOD is not None else 0)
                         show_fig(fig, "missing-values")
             else:
-                st.error("No features left after blank removal!")
+                st.error("No features left! We cannot proceed further, try adjusting settings.")
         
         _, c1, _ = st.columns(3)
-        if c1.button("**Submit Data for Statistics!**", type="primary"):
+        if c1.button("**Submit Data for Statistics!**", type="primary", disabled=ft.empty):
             st.session_state["md"], st.session_state["data"] = normalization(
                 ft, md, normalization_method
             )

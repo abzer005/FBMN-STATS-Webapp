@@ -23,7 +23,7 @@ def permanova_pcoa(scaled, distance_matrix, attribute):
 
 
 # can not hash pcoa
-def get_pcoa_scatter_plot(pcoa, md_samples, attribute, pcoa_x_axis, pcoa_y_axis, allowed_categories):
+def get_pcoa_scatter_plot(pcoa, md_samples, attribute, pcoa_x_axis, pcoa_y_axis):
     df = pcoa.samples[[pcoa_x_axis, pcoa_y_axis]]
     df = df.set_index(md_samples.index)
     df = pd.merge(
@@ -32,8 +32,6 @@ def get_pcoa_scatter_plot(pcoa, md_samples, attribute, pcoa_x_axis, pcoa_y_axis,
         left_index=True,
         right_index=True,
     )
-
-    df = df[df[attribute].isin(allowed_categories)]
 
     title = f"PRINCIPAL COORDINATE ANALYSIS"
     fig = px.scatter(
